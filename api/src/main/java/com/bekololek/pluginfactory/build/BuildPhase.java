@@ -1,0 +1,5 @@
+package com.bekololek.pluginfactory.build;
+
+public enum BuildPhase {
+    IDLE, CLARIFICATION, PLAN_GENERATION, PLAN_REVIEW, IMPLEMENTATION, COMPILATION, SECURITY_SCAN, INTEGRATION_TEST, DELIVERING
+}

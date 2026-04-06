@@ -1,0 +1,132 @@
+package com.bekololek.pluginfactory.plan;
+
+import com.bekololek.pluginfactory.agent.PlanGenerationAgent;
+import com.bekololek.pluginfactory.build.BuildPhase;
+import com.bekololek.pluginfactory.build.BuildSession;
+import com.bekololek.pluginfactory.build.BuildSessionService;
+import com.bekololek.pluginfactory.build.BuildStatus;
+import com.bekololek.pluginfactory.build.ChatMessageService;
+import com.bekololek.pluginfactory.common.exception.NotFoundException;
+import com.bekololek.pluginfactory.common.util.AuthenticatedUser;
+import com.bekololek.pluginfactory.plan.dto.CommandSpec;
+import com.bekololek.pluginfactory.plan.dto.ConfigEntry;
+import com.bekololek.pluginfactory.plan.dto.DependencySpec;
+import com.bekololek.pluginfactory.plan.dto.EventListenerSpec;
+import com.bekololek.pluginfactory.plan.dto.PlanDocumentDto;
+import com.bekololek.pluginfactory.plan.dto.PlanRevisionRequest;
+import com.bekololek.pluginfactory.plan.dto.ScopeValidationResultDto;
+import com.bekololek.pluginfactory.plan.dto.TestScenario;
+import com.bekololek.pluginfactory.subscription.SubscriptionService;
+import com.bekololek.pluginfactory.subscription.Tier;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/v1/builds")
+@RequiredArgsConstructor
+public class PlanController {
+
+    private final PlanDocumentRepository planDocumentRepository;
+    private final BuildSessionService buildSessionService;
+    private final SubscriptionService subscriptionService;
+    private final ComplexityEstimator complexityEstimator;
+    private final ScopeGatingService scopeGatingService;
+    private final PlanGenerationAgent planGenerationAgent;
+    private final ChatMessageService chatMessageService;
+    private final ObjectMapper objectMapper;
+
+    @GetMapping("/{sessionId}/plan")
+    public ResponseEntity<PlanDocumentDto> getPlan(@PathVariable UUID sessionId) {
+        UUID userId = AuthenticatedUser.getCurrentUserId();
+        buildSessionService.getSession(sessionId, userId); // validate ownership
+
+        PlanDocument plan = planDocumentRepository.findBySessionId(sessionId)
+                .orElseThrow(() -> new NotFoundException("Plan not found"));
+
+        return ResponseEntity.ok(toDto(plan));
+    }
+
+    @PostMapping("/{sessionId}/plan/approve")
+    public ResponseEntity<?> approvePlan(@PathVariable UUID sessionId) {
+        UUID userId = AuthenticatedUser.getCurrentUserId();
+        buildSessionService.getSession(sessionId, userId); // validate ownership
+
+        PlanDocument plan = planDocumentRepository.findBySessionId(sessionId)
+                .orElseThrow(() -> new NotFoundException("Plan not found"));
+
+        Tier tier = subscriptionService.getTierForUser(userId);
+        ScopeGatingService.ScopeValidationResult result = scopeGatingService.validateScope(plan, tier);
+
+        if (result.status() == ScopeGatingService.ScopeStatus.PASS) {
+            buildSessionService.updateStatus(sessionId, BuildStatus.APPROVED);
+            return ResponseEntity.ok(toDto(plan));
+        }
+
+        ScopeValidationResultDto validationDto = new ScopeValidationResultDto(
+                result.status().name(), result.violations());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(validationDto);
+    }
+
+    @PostMapping("/{sessionId}/plan/revise")
+    public ResponseEntity<PlanDocumentDto> revisePlan(@PathVariable UUID sessionId,
+                                                       @Valid @RequestBody PlanRevisionRequest request) {
+        UUID userId = AuthenticatedUser.getCurrentUserId();
+        buildSessionService.getSession(sessionId, userId); // validate ownership
+
+        // Re-enter PLANNING phase
+        buildSessionService.updateStatus(sessionId, BuildStatus.PLANNING);
+        buildSessionService.updatePhase(sessionId, BuildPhase.PLAN_GENERATION);
+
+        // Add feedback as user message
+        chatMessageService.addMessage(sessionId, "user", request.feedback(), null, 0);
+
+        // Re-trigger plan generation
+        PlanDocument revised = planGenerationAgent.generatePlan(sessionId);
+
+        return ResponseEntity.ok(toDto(revised));
+    }
+
+    private PlanDocumentDto toDto(PlanDocument plan) {
+        return new PlanDocumentDto(
+                plan.getId(),
+                plan.getSessionId(),
+                plan.getPluginName(),
+                plan.getDescription(),
+                plan.getMinecraftVersion(),
+                plan.getServerType(),
+                parseJson(plan.getCommands(), new TypeReference<List<CommandSpec>>() {}),
+                parseJson(plan.getEventListeners(), new TypeReference<List<EventListenerSpec>>() {}),
+                parseJson(plan.getConfigSchema(), new TypeReference<List<ConfigEntry>>() {}),
+                parseJson(plan.getDependencies(), new TypeReference<List<DependencySpec>>() {}),
+                parseJson(plan.getTestScenarios(), new TypeReference<List<TestScenario>>() {}),
+                plan.getEstimatedLoc(),
+                plan.getComplexityScore(),
+                plan.getVersion(),
+                plan.getCreatedAt()
+        );
+    }
+
+    private <T> T parseJson(String json, TypeReference<T> typeRef) {
+        try {
+            return objectMapper.readValue(json, typeRef);
+        } catch (Exception e) {
+            @SuppressWarnings("unchecked")
+            T empty = (T) Collections.emptyList();
+            return empty;
+        }
+    }
+}

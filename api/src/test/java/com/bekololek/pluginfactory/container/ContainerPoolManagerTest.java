@@ -1,0 +1,103 @@
+package com.bekololek.pluginfactory.container;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ContainerPoolManagerTest {
+
+    @Mock
+    private DockerService dockerService;
+
+    @InjectMocks
+    private ContainerPoolManager poolManager;
+
+    @Test
+    void claimFromWarmPool() {
+        when(dockerService.createContainer(eq(DockerService.ContainerType.BUILD), any()))
+                .thenReturn("container-1");
+
+        // Manually add a container to the pool by creating and releasing
+        when(dockerService.executeCommand(eq("container-1"), any(String[].class)))
+                .thenReturn(new ExecResult(0, "", ""));
+
+        String containerId = poolManager.claimContainer(DockerService.ContainerType.BUILD);
+        assertThat(containerId).isEqualTo("container-1");
+
+        // Release it back
+        poolManager.releaseContainer(containerId, DockerService.ContainerType.BUILD);
+
+        // Now claim again - should get same container from pool
+        String reused = poolManager.claimContainer(DockerService.ContainerType.BUILD);
+        assertThat(reused).isEqualTo("container-1");
+    }
+
+    @Test
+    void claimWhenPoolEmpty_createsNew() {
+        when(dockerService.createContainer(eq(DockerService.ContainerType.BUILD), any()))
+                .thenReturn("new-container");
+
+        String containerId = poolManager.claimContainer(DockerService.ContainerType.BUILD);
+
+        assertThat(containerId).isEqualTo("new-container");
+        verify(dockerService).createContainer(DockerService.ContainerType.BUILD, Map.of());
+        verify(dockerService).startContainer("new-container");
+    }
+
+    @Test
+    void releaseBackToPool() {
+        when(dockerService.createContainer(eq(DockerService.ContainerType.TEST), any()))
+                .thenReturn("test-container");
+        when(dockerService.executeCommand(eq("test-container"), any(String[].class)))
+                .thenReturn(new ExecResult(0, "", ""));
+
+        String containerId = poolManager.claimContainer(DockerService.ContainerType.TEST);
+        poolManager.releaseContainer(containerId, DockerService.ContainerType.TEST);
+
+        Map<String, Integer> status = poolManager.getPoolStatus();
+        assertThat(status.get("warmTest")).isEqualTo(1);
+    }
+
+    @Test
+    void getPoolStatus_emptyInitially() {
+        Map<String, Integer> status = poolManager.getPoolStatus();
+
+        assertThat(status.get("warmBuild")).isZero();
+        assertThat(status.get("warmTest")).isZero();
+    }
+
+    @Test
+    void initializePool_skipsWhenDockerUnavailable() {
+        when(dockerService.isAvailable()).thenReturn(false);
+
+        poolManager.initializePool();
+
+        verify(dockerService, never()).createContainer(any(), any());
+    }
+
+    @Test
+    void releaseContainer_removesOnFailure() {
+        when(dockerService.createContainer(eq(DockerService.ContainerType.BUILD), any()))
+                .thenReturn("failing-container");
+        when(dockerService.executeCommand(eq("failing-container"), any(String[].class)))
+                .thenThrow(new RuntimeException("container stopped"));
+
+        String containerId = poolManager.claimContainer(DockerService.ContainerType.BUILD);
+        poolManager.releaseContainer(containerId, DockerService.ContainerType.BUILD);
+
+        verify(dockerService).removeContainer("failing-container");
+        assertThat(poolManager.getPoolStatus().get("warmBuild")).isZero();
+    }
+}

@@ -1,0 +1,16 @@
+FROM eclipse-temurin:17-jdk-jammy
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    maven gradle git curl && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp/warmup
+COPY warmup-pom.xml pom.xml
+RUN mvn dependency:resolve -q || true
+RUN rm -rf /tmp/warmup
+
+RUN useradd -r -m builder
+WORKDIR /plugin-workspace
+RUN chown builder:builder /plugin-workspace
+USER builder
+VOLUME /plugin-workspace

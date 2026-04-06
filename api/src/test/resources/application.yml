@@ -1,0 +1,42 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    database-platform: org.hibernate.dialect.H2Dialect
+    open-in-view: false
+  flyway:
+    locations: classpath:db/migration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+
+jwt:
+  secret: test-secret-key-at-least-256-bits-long-for-hs256-algorithm-testing-only
+  access-expiry: 900000
+  refresh-expiry: 604800000
+
+discord:
+  client-id: test-client-id
+  client-secret: test-client-secret
+  redirect-uri: http://localhost:5173/auth/callback
+
+cors:
+  allowed-origins: http://localhost:5173
+
+stripe:
+  api-key: ""
+  webhook-secret: ""
+
+anthropic:
+  api-key: "test-api-key"
+
+docker:
+  host: unix:///var/run/docker.sock
+  build-image: pluginfactory-build:latest
+  test-image: pluginfactory-test:latest

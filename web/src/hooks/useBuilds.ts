@@ -1,0 +1,167 @@
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
+import {
+  createBuild,
+  getBuilds,
+  getBuild,
+  getMessages,
+  sendMessage,
+  getBudget,
+  getPlan,
+  approvePlan,
+  revisePlan,
+  requestIteration,
+  getArtifacts,
+} from '@/api/builds';
+import type { BuildSession } from '@/types';
+
+export function useCreateBuild() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createBuild,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['builds'] });
+    },
+  });
+}
+
+export function useBuilds(page: number, size = 10) {
+  return useQuery({
+    queryKey: ['builds', page, size],
+    queryFn: () => getBuilds(page, size),
+  });
+}
+
+export function useBuild(id: string) {
+  return useQuery({
+    queryKey: ['build', id],
+    queryFn: () => getBuild(id),
+    enabled: !!id,
+  });
+}
+
+export function useMessages(sessionId: string) {
+  const { data: build } = useBuild(sessionId);
+  const isActive = build
+    ? !(['COMPLETED', 'FAILED', 'CANCELLED'] as string[]).includes(
+        build.status,
+      )
+    : false;
+
+  return useQuery({
+    queryKey: ['messages', sessionId],
+    queryFn: () => getMessages(sessionId),
+    enabled: !!sessionId,
+    refetchInterval: isActive ? 5000 : false,
+  });
+}
+
+export function useSendMessage(sessionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (content: string) => sendMessage(sessionId, content),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['messages', sessionId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ['build', sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['budget', sessionId] });
+    },
+  });
+}
+
+export function useTokenBudget(sessionId: string) {
+  return useQuery({
+    queryKey: ['budget', sessionId],
+    queryFn: () => getBudget(sessionId),
+    enabled: !!sessionId,
+  });
+}
+
+export function usePlan(sessionId: string) {
+  const { data: build } = useBuild(sessionId);
+  const planStatuses: string[] = [
+    'PLANNING',
+    'APPROVED',
+    'BUILDING',
+    'TESTING',
+    'COMPLETED',
+  ];
+  const enabled = !!build && planStatuses.includes(build.status);
+
+  return useQuery({
+    queryKey: ['plan', sessionId],
+    queryFn: () => getPlan(sessionId),
+    enabled,
+  });
+}
+
+export function useApprovePlan(sessionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => approvePlan(sessionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['build', sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['plan', sessionId] });
+    },
+  });
+}
+
+export function useRevisePlan(sessionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (feedback: string) => revisePlan(sessionId, feedback),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['build', sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['plan', sessionId] });
+      void queryClient.invalidateQueries({
+        queryKey: ['messages', sessionId],
+      });
+    },
+  });
+}
+
+export function useIterate(sessionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (feedback: string) => requestIteration(sessionId, feedback),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['build', sessionId] });
+      void queryClient.invalidateQueries({
+        queryKey: ['messages', sessionId],
+      });
+    },
+  });
+}
+
+export function useArtifacts(sessionId: string) {
+  const { data: build } = useBuild(sessionId);
+  const enabled =
+    !!build &&
+    (['COMPLETED', 'FAILED'] as string[]).includes(build.status);
+
+  return useQuery({
+    queryKey: ['artifacts', sessionId],
+    queryFn: () => getArtifacts(sessionId),
+    enabled,
+  });
+}
+
+/** Wrapper for polling the build session during active phases */
+export function useBuildPolling(sessionId: string) {
+  const queryResult = useBuild(sessionId);
+  const build = queryResult.data as BuildSession | undefined;
+  const isActive = build
+    ? (['BUILDING', 'TESTING', 'APPROVED'] as string[]).includes(build.status)
+    : false;
+
+  return useQuery({
+    queryKey: ['build', sessionId],
+    queryFn: () => getBuild(sessionId),
+    enabled: !!sessionId,
+    refetchInterval: isActive ? 2000 : false,
+  });
+}

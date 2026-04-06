@@ -1,0 +1,134 @@
+package com.bekololek.pluginfactory.agent;
+
+import com.bekololek.pluginfactory.plan.PlanDocument;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class TemplateServiceTest {
+
+    private TemplateService templateService;
+
+    @BeforeEach
+    void setUp() {
+        templateService = new TemplateService();
+    }
+
+    @Test
+    void renderTemplate_validPom() {
+        PlanDocument plan = createTestPlan();
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+
+        String pom = files.get("pom.xml");
+        assertThat(pom).isNotNull();
+        assertThat(pom).contains("<artifactId>test-plugin</artifactId>");
+        assertThat(pom).contains("<version>1.0.0</version>");
+        assertThat(pom).contains("1.20.4-R0.1-SNAPSHOT");
+    }
+
+    @Test
+    void renderTemplate_validPluginYml() {
+        PlanDocument plan = createTestPlan();
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+
+        String pluginYml = files.get("src/main/resources/plugin.yml");
+        assertThat(pluginYml).isNotNull();
+        assertThat(pluginYml).contains("name: Test Plugin");
+        assertThat(pluginYml).contains("main: com.bekololek.generated.TestPlugin");
+        assertThat(pluginYml).contains("api-version: '1.20'");
+    }
+
+    @Test
+    void renderTemplate_validMainClass() {
+        PlanDocument plan = createTestPlan();
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+
+        String mainClassKey = "src/main/java/com/bekololek/generated/TestPlugin.java";
+        assertThat(files).containsKey(mainClassKey);
+
+        String mainClass = files.get(mainClassKey);
+        assertThat(mainClass).contains("class TestPlugin extends JavaPlugin");
+        assertThat(mainClass).contains("package com.bekololek.generated;");
+        assertThat(mainClass).contains("onEnable()");
+        assertThat(mainClass).contains("onDisable()");
+    }
+
+    @Test
+    void renderTemplate_withCommands() {
+        PlanDocument plan = createTestPlan();
+        plan.setCommands("[{\"name\":\"heal\",\"description\":\"Heal a player\",\"usage\":\"/heal [player]\"}]");
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+
+        String pluginYml = files.get("src/main/resources/plugin.yml");
+        assertThat(pluginYml).contains("heal:");
+        assertThat(pluginYml).contains("description: \"Heal a player\"");
+    }
+
+    @Test
+    void toClassName_normalName() {
+        assertThat(templateService.toClassName("Test Plugin")).isEqualTo("TestPlugin");
+    }
+
+    @Test
+    void toClassName_specialChars() {
+        assertThat(templateService.toClassName("my-awesome plugin!")).isEqualTo("MyAwesomePlugin");
+    }
+
+    @Test
+    void toClassName_null() {
+        assertThat(templateService.toClassName(null)).isEqualTo("GeneratedPlugin");
+    }
+
+    @Test
+    void toClassName_blank() {
+        assertThat(templateService.toClassName("  ")).isEqualTo("GeneratedPlugin");
+    }
+
+    @Test
+    void toClassName_startsWithDigit() {
+        assertThat(templateService.toClassName("123Plugin")).startsWith("Plugin");
+    }
+
+    @Test
+    void toArtifactId_normalName() {
+        assertThat(templateService.toArtifactId("Test Plugin")).isEqualTo("test-plugin");
+    }
+
+    @Test
+    void toArtifactId_null() {
+        assertThat(templateService.toArtifactId(null)).isEqualTo("generated-plugin");
+    }
+
+    @Test
+    void renderTemplate_threeFiles() {
+        PlanDocument plan = createTestPlan();
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+
+        assertThat(files).hasSize(3);
+        assertThat(files).containsKey("pom.xml");
+        assertThat(files).containsKey("src/main/resources/plugin.yml");
+        assertThat(files.keySet().stream().filter(k -> k.endsWith(".java")).count()).isEqualTo(1);
+    }
+
+    private PlanDocument createTestPlan() {
+        PlanDocument plan = new PlanDocument();
+        plan.setPluginName("Test Plugin");
+        plan.setDescription("A test plugin for unit testing");
+        plan.setMinecraftVersion("1.20.4");
+        plan.setServerType("PAPER");
+        plan.setCommands("[]");
+        plan.setEventListeners("[]");
+        plan.setConfigSchema("[]");
+        plan.setDependencies("[]");
+        plan.setEstimatedLoc(100);
+        return plan;
+    }
+}
