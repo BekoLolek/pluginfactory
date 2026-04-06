@@ -45,10 +45,14 @@ USER appuser
 
 EXPOSE 8080
 
-# JVM tuning for containers
+# JVM tuning for small containers (1 OCPU / 6GB host)
+# MaxRAMPercentage relative to container limit, not host. Memory limits set in compose.
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
     -XX:MaxRAMPercentage=75.0 \
-    -XX:InitialRAMPercentage=50.0 \
+    -XX:InitialRAMPercentage=25.0 \
+    -XX:+UseSerialGC \
+    -XX:MaxMetaspaceSize=128m \
+    -Xss512k \
     -Djava.security.egd=file:/dev/./urandom"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
