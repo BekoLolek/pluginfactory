@@ -22,6 +22,9 @@ public class TokenBudget extends BaseEntity {
     @Column(name = "session_id", nullable = false, unique = true)
     private UUID sessionId;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     @Column(name = "allocated_tokens", nullable = false)
     private int allocatedTokens;
 

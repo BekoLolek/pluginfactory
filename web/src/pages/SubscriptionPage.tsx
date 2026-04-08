@@ -13,9 +13,9 @@ const TIER_ORDER = ['FREE', 'BASIC', 'PRO', 'TEAM'];
 
 const TIER_PRICES: Record<string, string> = {
   FREE: '$0',
-  BASIC: '$9',
-  PRO: '$29',
-  TEAM: '$79',
+  BASIC: '$9.99',
+  PRO: '$29.99',
+  TEAM: '$79.99',
 };
 
 export default function SubscriptionPage() {
@@ -168,7 +168,7 @@ export default function SubscriptionPage() {
                     value={String(tier.maxBuilds)}
                   />
                   <FeatureRow
-                    label="Token budget"
+                    label="Tokens / month"
                     value={tier.tokenBudget.toLocaleString()}
                   />
                   <FeatureRow

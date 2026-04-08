@@ -60,7 +60,7 @@ class BuildSessionServiceTest {
         assertThat(result.getStatus()).isEqualTo(BuildStatus.CHATTING);
         assertThat(result.getCurrentPhase()).isEqualTo(BuildPhase.CLARIFICATION);
 
-        verify(tokenBudgetService).allocateBudget(result.getId(), Tier.PRO);
+        verify(tokenBudgetService).allocateBudget(result.getId(), userId, Tier.PRO);
         verify(subscriptionService).incrementBuildCount(userId);
     }
 
@@ -74,7 +74,7 @@ class BuildSessionServiceTest {
                 .hasMessage("Build limit reached");
 
         verify(buildSessionRepository, never()).save(any());
-        verify(tokenBudgetService, never()).allocateBudget(any(), any());
+        verify(tokenBudgetService, never()).allocateBudget(any(), any(), any());
         verify(subscriptionService, never()).incrementBuildCount(any());
     }
 

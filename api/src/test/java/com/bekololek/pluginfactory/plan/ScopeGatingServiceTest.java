@@ -70,9 +70,9 @@ class ScopeGatingServiceTest {
     }
 
     @Test
-    void proTier_unlimited_passes() {
-        // PRO tier: -1 commands, -1 event listeners (unlimited)
-        PlanDocument plan = createPlan(50, 50);
+    void proTier_atLimits_passes() {
+        // PRO tier: max 50 commands, 30 event listeners
+        PlanDocument plan = createPlan(50, 30);
 
         ScopeGatingService.ScopeValidationResult result = service.validateScope(plan, Tier.PRO);
 
@@ -103,9 +103,9 @@ class ScopeGatingServiceTest {
     }
 
     @Test
-    void teamTier_unlimited_passes() {
-        // TEAM tier: -1 commands, -1 event listeners (unlimited)
-        PlanDocument plan = createPlan(100, 100);
+    void teamTier_atLimits_passes() {
+        // TEAM tier: max 50 commands, 30 event listeners
+        PlanDocument plan = createPlan(50, 30);
 
         ScopeGatingService.ScopeValidationResult result = service.validateScope(plan, Tier.TEAM);
 

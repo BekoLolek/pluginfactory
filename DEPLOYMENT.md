@@ -92,6 +92,17 @@ ANTHROPIC_API_KEY=sk-ant-...
    - PRO: $29.99/month
    - TEAM: $79.99/month
 
+   **Tier limits** (defined in `api/src/main/java/com/bekololek/pluginfactory/subscription/Tier.java`):
+
+   | Tier  | Builds/mo | Tokens/mo | Iterations | Max parallel | Commands | Listeners | Marketplace slots | JAR retention | Source code |
+   |-------|-----------|-----------|------------|--------------|----------|-----------|-------------------|---------------|-------------|
+   | FREE  | 1         | 30,000    | 1          | 0            | 5        | 3         | 0                 | 7 days        | No          |
+   | BASIC | 5         | 300,000   | 3          | 0            | 15       | 10        | 2                 | 30 days       | No          |
+   | PRO   | 20        | 900,000   | 5          | 5            | 50       | 30        | 5                 | 90 days       | Yes         |
+   | TEAM  | 150       | 6,000,000 | 10         | 5            | 50       | 30        | 25                | 180 days      | Yes         |
+
+   Tokens are a *pooled monthly budget* per subscription — a build is denied when either the build count cap or the token pool is reached (with at least 1k tokens of headroom required to start a build).
+
 Save:
 ```
 STRIPE_API_KEY=sk_test_...
@@ -592,9 +603,9 @@ Docker logs grow over time. Configure log rotation in `/etc/docker/daemon.json`:
 
 Restart Docker: `sudo systemctl restart docker`
 
-### 11.4 Subscription Build Count Reset
+### 11.4 Monthly Usage Reset
 
-The backend automatically resets `builds_used_this_period` on the 1st of each month at midnight UTC via `@Scheduled(cron = "0 0 0 1 * *")` in `SubscriptionService`. No manual setup needed — just make sure `@EnableScheduling` is on the main application class (it is).
+The backend automatically resets both `builds_used_this_period` and `tokens_used_this_period` on the 1st of each month at midnight UTC via `@Scheduled(cron = "0 0 0 1 * *")` in `SubscriptionService.resetUsageCounts()`. Token budgets are pooled monthly per subscription, not per build, and the pool refills on this schedule. No manual setup needed — just make sure `@EnableScheduling` is on the main application class (it is).
 
 ### 11.5 MinIO (Object Storage)
 

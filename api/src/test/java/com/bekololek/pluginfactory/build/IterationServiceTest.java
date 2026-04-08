@@ -11,7 +11,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -91,17 +90,18 @@ class IterationServiceTest {
 
     @Test
     void requestIteration_iterationLimitReached_throwsForbiddenException() {
-        // Arrange - FREE tier has maxIterations = 0
+        // Arrange - FREE tier has maxIterations = 1
         BuildSession session = new BuildSession();
         session.setUserId(userId);
         session.setStatus(BuildStatus.COMPLETED);
         when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
         when(subscriptionService.getTierForUser(userId)).thenReturn(Tier.FREE);
 
-        // FREE tier maxIterations = 0, and there are 0 existing iterations,
-        // but 0 >= 0 so the limit is reached
+        // FREE tier maxIterations = 1, with 1 existing iteration the limit is reached
+        BuildIteration existing = new BuildIteration();
+        existing.setIterationNumber(1);
         when(buildIterationRepository.findBySessionIdOrderByIterationNumberAsc(sessionId))
-                .thenReturn(Collections.emptyList());
+                .thenReturn(List.of(existing));
 
         // Act & Assert
         assertThatThrownBy(() -> iterationService.requestIteration(sessionId, userId, "Fix bug"))

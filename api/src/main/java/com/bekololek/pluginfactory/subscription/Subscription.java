@@ -42,6 +42,9 @@ public class Subscription extends BaseEntity {
     @Column(name = "builds_used_this_period", nullable = false)
     private int buildsUsedThisPeriod = 0;
 
+    @Column(name = "tokens_used_this_period", nullable = false)
+    private int tokensUsedThisPeriod = 0;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private SubscriptionStatus status = SubscriptionStatus.ACTIVE;

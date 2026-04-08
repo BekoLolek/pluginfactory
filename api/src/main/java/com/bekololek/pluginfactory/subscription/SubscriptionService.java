@@ -28,14 +28,30 @@ public class SubscriptionService {
         return getCurrentSubscription(userId).getTier();
     }
 
+    /**
+     * Minimum tokens required to start a new build. Prevents users from starting
+     * a build when only a handful of tokens remain in the monthly pool.
+     */
+    private static final int MIN_TOKENS_TO_START_BUILD = 1_000;
+
     @Transactional(readOnly = true)
     public boolean canBuild(UUID userId) {
         Subscription subscription = getCurrentSubscription(userId);
-        int maxBuilds = subscription.getTier().getMaxBuilds();
-        if (maxBuilds == -1) {
-            return true;
+        Tier tier = subscription.getTier();
+        if (subscription.getBuildsUsedThisPeriod() >= tier.getMaxBuilds()) {
+            return false;
         }
-        return subscription.getBuildsUsedThisPeriod() < maxBuilds;
+        return getRemainingMonthlyTokens(subscription) >= MIN_TOKENS_TO_START_BUILD;
+    }
+
+    @Transactional(readOnly = true)
+    public int getRemainingMonthlyTokens(UUID userId) {
+        return getRemainingMonthlyTokens(getCurrentSubscription(userId));
+    }
+
+    private int getRemainingMonthlyTokens(Subscription subscription) {
+        int remaining = subscription.getTier().getTokenBudget() - subscription.getTokensUsedThisPeriod();
+        return Math.max(0, remaining);
     }
 
     @Transactional
@@ -45,16 +61,27 @@ public class SubscriptionService {
         subscriptionRepository.save(subscription);
     }
 
+    @Transactional
+    public void recordTokenUsage(UUID userId, int tokens) {
+        if (tokens <= 0) {
+            return;
+        }
+        Subscription subscription = getCurrentSubscription(userId);
+        subscription.setTokensUsedThisPeriod(subscription.getTokensUsedThisPeriod() + tokens);
+        subscriptionRepository.save(subscription);
+    }
+
     @Scheduled(cron = "0 0 0 1 * *")
     @Transactional
-    public void resetBuildCounts() {
-        log.info("Resetting build counts for all active subscriptions");
+    public void resetUsageCounts() {
+        log.info("Resetting build and token counts for all active subscriptions");
         List<Subscription> activeSubscriptions = subscriptionRepository
                 .findByStatus(Subscription.SubscriptionStatus.ACTIVE);
         for (Subscription subscription : activeSubscriptions) {
             subscription.setBuildsUsedThisPeriod(0);
+            subscription.setTokensUsedThisPeriod(0);
         }
         subscriptionRepository.saveAll(activeSubscriptions);
-        log.info("Reset build counts for {} subscriptions", activeSubscriptions.size());
+        log.info("Reset usage counts for {} subscriptions", activeSubscriptions.size());
     }
 }

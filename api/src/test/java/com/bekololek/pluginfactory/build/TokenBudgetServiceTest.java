@@ -1,10 +1,10 @@
 package com.bekololek.pluginfactory.build;
 
 import com.bekololek.pluginfactory.common.exception.NotFoundException;
+import com.bekololek.pluginfactory.subscription.SubscriptionService;
 import com.bekololek.pluginfactory.subscription.Tier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -15,7 +15,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,17 +24,23 @@ class TokenBudgetServiceTest {
     @Mock
     private TokenBudgetRepository tokenBudgetRepository;
 
+    @Mock
+    private SubscriptionService subscriptionService;
+
     @InjectMocks
     private TokenBudgetService tokenBudgetService;
 
     @Test
     void allocateBudget() {
         UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         when(tokenBudgetRepository.save(any(TokenBudget.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(subscriptionService.getRemainingMonthlyTokens(userId)).thenReturn(Tier.PRO.getTokenBudget());
 
-        TokenBudget result = tokenBudgetService.allocateBudget(sessionId, Tier.PRO);
+        TokenBudget result = tokenBudgetService.allocateBudget(sessionId, userId, Tier.PRO);
 
         assertThat(result.getSessionId()).isEqualTo(sessionId);
+        assertThat(result.getUserId()).isEqualTo(userId);
         assertThat(result.getAllocatedTokens()).isEqualTo(Tier.PRO.getTokenBudget());
         assertThat(result.getConsumedTokens()).isEqualTo(0);
         assertThat(result.getThresholdStatus()).isEqualTo(ThresholdStatus.NORMAL);

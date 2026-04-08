@@ -1,6 +1,7 @@
 package com.bekololek.pluginfactory.build;
 
 import com.bekololek.pluginfactory.common.exception.NotFoundException;
+import com.bekololek.pluginfactory.subscription.SubscriptionService;
 import com.bekololek.pluginfactory.subscription.Tier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,12 +14,20 @@ import java.util.UUID;
 public class TokenBudgetService {
 
     private final TokenBudgetRepository tokenBudgetRepository;
+    private final SubscriptionService subscriptionService;
 
     @Transactional
-    public TokenBudget allocateBudget(UUID sessionId, Tier tier) {
+    public TokenBudget allocateBudget(UUID sessionId, UUID userId, Tier tier) {
         TokenBudget budget = new TokenBudget();
         budget.setSessionId(sessionId);
-        budget.setAllocatedTokens(tier.getTokenBudget());
+        budget.setUserId(userId);
+        // Per-session ceiling = whatever remains in the user's monthly pool.
+        // This lets a single build use the full remaining budget if needed,
+        // while still preventing a runaway build from going past the monthly cap.
+        int remaining = userId != null
+                ? subscriptionService.getRemainingMonthlyTokens(userId)
+                : tier.getTokenBudget();
+        budget.setAllocatedTokens(remaining);
         budget.setConsumedTokens(0);
         budget.setPlanningTokens(0);
         budget.setImplementationTokens(0);
@@ -33,6 +42,9 @@ public class TokenBudgetService {
                 .orElseThrow(() -> new NotFoundException("Token budget not found"));
 
         budget.setConsumedTokens(budget.getConsumedTokens() + amount);
+        if (budget.getUserId() != null) {
+            subscriptionService.recordTokenUsage(budget.getUserId(), amount);
+        }
 
         switch (phase.toLowerCase()) {
             case "planning" -> budget.setPlanningTokens(budget.getPlanningTokens() + amount);

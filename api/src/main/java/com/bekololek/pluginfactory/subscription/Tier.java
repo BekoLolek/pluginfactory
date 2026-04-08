@@ -4,10 +4,13 @@ import lombok.Getter;
 
 @Getter
 public enum Tier {
-    FREE(1, 50_000, 0, 0, 5, 3, 7, 0, false),
-    BASIC(5, 200_000, 0, 2, 15, 10, 30, 1, false),
-    PRO(20, 500_000, 5, 5, -1, -1, 90, 5, true),
-    TEAM(-1, 1_000_000, 20, -1, -1, -1, -1, -1, true);
+    // tokenBudget is now a MONTHLY token pool, not a per-build cap.
+    // (maxBuilds, monthlyTokenPool, maxParallel, maxIterations, maxCommands,
+    //  maxEventListeners, jarRetentionDays, marketplaceSlots, sourceCodeAccess)
+    FREE(1, 30_000, 0, 1, 5, 3, 7, 0, false),
+    BASIC(5, 300_000, 0, 3, 15, 10, 30, 2, false),
+    PRO(20, 900_000, 5, 5, 50, 30, 90, 5, true),
+    TEAM(150, 6_000_000, 5, 10, 50, 30, 180, 25, true);
 
     private final int maxBuilds;
     private final int tokenBudget;

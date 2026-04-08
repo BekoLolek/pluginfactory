@@ -55,7 +55,7 @@ public class BuildSessionService {
         session.setCurrentPhase(BuildPhase.CLARIFICATION);
         BuildSession saved = buildSessionRepository.save(session);
 
-        tokenBudgetService.allocateBudget(saved.getId(), tier);
+        tokenBudgetService.allocateBudget(saved.getId(), userId, tier);
         subscriptionService.incrementBuildCount(userId);
 
         return saved;
