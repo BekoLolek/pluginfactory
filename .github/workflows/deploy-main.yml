@@ -1,0 +1,123 @@
+name: Deploy Main
+
+# Auto-deploy to the production VM on every push to main, gated by tests.
+# The release-triggered deploy-production.yml remains for tagged rollouts
+# (e.g. if you want to pin prod to a reviewed tag instead of HEAD of main).
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  # Cancel an in-flight deploy if a newer commit lands on main. The VM only
+  # ever runs the latest accepted build, so queuing older ones is wasteful.
+  group: deploy-main
+  cancel-in-progress: true
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      - name: Run backend tests
+        run: cd api && ./mvnw clean verify -q
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+      - name: Install dependencies
+        run: cd web && npm ci
+      - name: Type check
+        run: cd web && npx tsc --noEmit
+      - name: Lint
+        run: cd web && npm run lint
+      - name: Build
+        run: cd web && npm run build
+
+  deploy:
+    needs: [backend-test, frontend-test]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.PRODUCTION_HOST_IP }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to production
+        env:
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST_IP }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+
+          # Pin the remote checkout to the exact commit that passed CI so a
+          # racing push doesn't sneak untested code onto the VM.
+          $SSH_CMD "$DEPLOY_HOST" "
+            set -e
+            cd /opt/pluginfactory &&
+            git fetch origin main &&
+            git checkout $DEPLOY_SHA &&
+            docker compose build --no-cache &&
+            docker compose up -d --remove-orphans
+          "
+
+      - name: Verify deployment health
+        env:
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST_IP }}
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+          for i in $(seq 1 24); do
+            STATUS=$($SSH_CMD "$DEPLOY_HOST" "curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/actuator/health" 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed after $((i * 5))s"
+              exit 0
+            fi
+            echo "Waiting... ($((i * 5))s elapsed, HTTP status: $STATUS)"
+            sleep 5
+          done
+          echo "Health check failed after 120s"
+          exit 1
+
+      - name: Discord notification
+        if: always()
+        env:
+          DEPLOY_STATUS: ${{ job.status }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+            if [ "$DEPLOY_STATUS" = "success" ]; then
+              EMOJI="✅"
+              COLOR=3066993
+            else
+              EMOJI="❌"
+              COLOR=15158332
+            fi
+            SHORT_SHA=$(echo "$COMMIT_SHA" | cut -c1-7)
+            SAFE_MSG=$(echo "$COMMIT_MSG" | head -n1 | sed 's/"/\\"/g')
+            curl -s -H "Content-Type: application/json" \
+              -d "{\"embeds\":[{\"title\":\"${EMOJI} Main Deploy: ${DEPLOY_STATUS}\",\"description\":\"\`${SHORT_SHA}\` ${SAFE_MSG}\",\"color\":${COLOR},\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}]}" \
+              "${{ secrets.DISCORD_WEBHOOK_URL }}" || true
+          fi
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
