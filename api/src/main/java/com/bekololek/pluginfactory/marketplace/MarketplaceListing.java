@@ -44,7 +44,7 @@ public class MarketplaceListing extends BaseEntity {
     @Column(name = "download_count", nullable = false)
     private int downloadCount;
 
-    @Column(name = "average_rating", nullable = false, columnDefinition = "DECIMAL(3,2)")
+    @Column(name = "average_rating", nullable = false)
     private double averageRating;
 
     @Column(name = "review_count", nullable = false)
