@@ -1,5 +1,135 @@
 @import "tailwindcss";
 
+/*
+ * Warm palette override.
+ *
+ * Remaps Tailwind's cool neutrals (slate/gray/zinc) to warm browns
+ * and cool accents (blue/indigo/sky/cyan/teal) to amber/copper tones,
+ * so every existing `bg-slate-900`, `text-blue-400`, etc. across the
+ * codebase automatically picks up the new warm theme.
+ *
+ * Semantic colors (red, yellow, green/emerald) are intentionally left
+ * at defaults so error/warning/success states stay readable.
+ */
+@theme {
+  /* === Warm neutrals (slate) === */
+  --color-slate-50:  #faf4ea;
+  --color-slate-100: #f2e8d6;
+  --color-slate-200: #e4d3b4;
+  --color-slate-300: #cfb88c;
+  --color-slate-400: #a89174;
+  --color-slate-500: #7d6553;
+  --color-slate-600: #5a483b;
+  --color-slate-700: #3f3128;
+  --color-slate-800: #2b1f19;
+  --color-slate-900: #1c1410;
+  --color-slate-950: #120b08;
+
+  /* === Warm neutrals (gray) === */
+  --color-gray-50:  #faf5ec;
+  --color-gray-100: #f2e9d8;
+  --color-gray-200: #e5d4b6;
+  --color-gray-300: #d0b98e;
+  --color-gray-400: #a99275;
+  --color-gray-500: #7e6654;
+  --color-gray-600: #5b493c;
+  --color-gray-700: #403229;
+  --color-gray-800: #2c201a;
+  --color-gray-900: #1d1511;
+  --color-gray-950: #130c09;
+
+  /* === Warm neutrals (zinc) === */
+  --color-zinc-50:  #f9f4eb;
+  --color-zinc-100: #f1e7d5;
+  --color-zinc-200: #e3d2b3;
+  --color-zinc-300: #ceb78b;
+  --color-zinc-400: #a79073;
+  --color-zinc-500: #7c6452;
+  --color-zinc-600: #59473a;
+  --color-zinc-700: #3e3027;
+  --color-zinc-800: #2a1e18;
+  --color-zinc-900: #1b130f;
+  --color-zinc-950: #110a07;
+
+  /* === Warm neutrals (neutral) === */
+  --color-neutral-50:  #fbf6ed;
+  --color-neutral-100: #f3ead9;
+  --color-neutral-200: #e6d5b7;
+  --color-neutral-300: #d1ba8f;
+  --color-neutral-400: #aa9376;
+  --color-neutral-500: #7f6755;
+  --color-neutral-600: #5c4a3d;
+  --color-neutral-700: #41332a;
+  --color-neutral-800: #2d211b;
+  --color-neutral-900: #1e1612;
+  --color-neutral-950: #140d0a;
+
+  /* === Primary accent: blue → amber/copper === */
+  --color-blue-50:  #fdf5e6;
+  --color-blue-100: #fbe7c0;
+  --color-blue-200: #f8d089;
+  --color-blue-300: #f4b558;
+  --color-blue-400: #ef9a34;
+  --color-blue-500: #e07b2c;
+  --color-blue-600: #c16320;
+  --color-blue-700: #9a4c18;
+  --color-blue-800: #783a13;
+  --color-blue-900: #552810;
+  --color-blue-950: #331708;
+
+  /* === Secondary accent: indigo → burnt sienna === */
+  --color-indigo-50:  #fdf3e8;
+  --color-indigo-100: #fbe1c4;
+  --color-indigo-200: #f6c38d;
+  --color-indigo-300: #f0a158;
+  --color-indigo-400: #e8842f;
+  --color-indigo-500: #d86a1d;
+  --color-indigo-600: #b95416;
+  --color-indigo-700: #934013;
+  --color-indigo-800: #712f10;
+  --color-indigo-900: #4f200d;
+  --color-indigo-950: #2f1207;
+
+  /* === Sky → soft honey === */
+  --color-sky-50:  #fef6e4;
+  --color-sky-100: #fde8ba;
+  --color-sky-200: #fbd483;
+  --color-sky-300: #f7bb4a;
+  --color-sky-400: #f1a024;
+  --color-sky-500: #e08318;
+  --color-sky-600: #bd6612;
+  --color-sky-700: #944d0f;
+  --color-sky-800: #70390c;
+  --color-sky-900: #4e2708;
+  --color-sky-950: #2c1604;
+
+  /* === Cyan → warm gold === */
+  --color-cyan-50:  #fdf6e3;
+  --color-cyan-100: #fce8b8;
+  --color-cyan-200: #fad480;
+  --color-cyan-300: #f4b947;
+  --color-cyan-400: #ec9b22;
+  --color-cyan-500: #d77f16;
+  --color-cyan-600: #b26311;
+  --color-cyan-700: #8a4b0e;
+  --color-cyan-800: #65360a;
+  --color-cyan-900: #452307;
+  --color-cyan-950: #261304;
+
+  /* === Teal → terracotta === */
+  --color-teal-50:  #fdf2e8;
+  --color-teal-100: #fadcc2;
+  --color-teal-200: #f5bd8d;
+  --color-teal-300: #ee9b5b;
+  --color-teal-400: #e37b34;
+  --color-teal-500: #cd5f1f;
+  --color-teal-600: #a94a17;
+  --color-teal-700: #833914;
+  --color-teal-800: #5e2810;
+  --color-teal-900: #3e1a0b;
+  --color-teal-950: #220d05;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
