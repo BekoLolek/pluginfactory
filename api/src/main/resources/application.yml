@@ -121,6 +121,23 @@ cors:
 app:
   base-url: ${APP_BASE_URL:https://pluginfactory.bekololek.com}
 
+anthropic:
+  api-key: ${ANTHROPIC_API_KEY:}
+
+stripe:
+  api-key: ${STRIPE_API_KEY:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+discord:
+  client-id: ${DISCORD_CLIENT_ID}
+  client-secret: ${DISCORD_CLIENT_SECRET}
+  redirect-uri: ${DISCORD_REDIRECT_URI}
+
+docker:
+  host: ${DOCKER_HOST:unix:///var/run/docker.sock}
+  build-image: ${DOCKER_BUILD_IMAGE:pluginfactory-build:latest}
+  test-image: ${DOCKER_TEST_IMAGE:pluginfactory-test:latest}
+
 server:
   max-http-request-header-size: 16KB
   tomcat:
