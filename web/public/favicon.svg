@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Warm radial background -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="65%">
+      <stop offset="0%" stop-color="#3a2114"/>
+      <stop offset="55%" stop-color="#1c1410"/>
+      <stop offset="100%" stop-color="#100a07"/>
+    </radialGradient>
+
+    <!-- Amber gradient for braces (molten copper) -->
+    <linearGradient id="brace" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fde0b8"/>
+      <stop offset="50%" stop-color="#f4b558"/>
+      <stop offset="100%" stop-color="#c16320"/>
+    </linearGradient>
+
+    <!-- Bright sparkle gradient -->
+    <radialGradient id="sparkle" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff7e0"/>
+      <stop offset="40%" stop-color="#fde0b8"/>
+      <stop offset="100%" stop-color="#f4b558"/>
+    </radialGradient>
+
+    <!-- Glow filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+
+  <!-- Warm rounded background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- ===== Left curly brace { ===== -->
+  <path d="M 208 96
+           C 148 96, 140 140, 140 184
+           C 140 224, 140 236, 96 256
+           C 140 276, 140 288, 140 328
+           C 140 372, 148 416, 208 416"
+        fill="none"
+        stroke="url(#brace)"
+        stroke-width="30"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- ===== Right curly brace } ===== -->
+  <path d="M 304 96
+           C 364 96, 372 140, 372 184
+           C 372 224, 372 236, 416 256
+           C 372 276, 372 288, 372 328
+           C 372 372, 364 416, 304 416"
+        fill="none"
+        stroke="url(#brace)"
+        stroke-width="30"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- ===== Central AI sparkle (4-point star with concave sides) ===== -->
+  <g filter="url(#glow)">
+    <path d="M 256 152
+             C 266 232, 280 246, 360 256
+             C 280 266, 266 280, 256 360
+             C 246 280, 232 266, 152 256
+             C 232 246, 246 232, 256 152 Z"
+          fill="url(#sparkle)"/>
+  </g>
+
+</svg>
