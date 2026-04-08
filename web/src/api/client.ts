@@ -31,7 +31,7 @@ function processQueue(error: unknown, token: string | null) {
 
 function getTokens(): { accessToken: string | null; refreshToken: string | null } {
   try {
-    const raw = sessionStorage.getItem('auth-tokens');
+    const raw = localStorage.getItem('auth-tokens');
     if (raw) {
       return JSON.parse(raw);
     }
@@ -79,8 +79,8 @@ client.interceptors.response.use(
         { refreshToken },
       );
 
-      // Update sessionStorage with new tokens
-      sessionStorage.setItem(
+      // Update localStorage with new tokens
+      localStorage.setItem(
         'auth-tokens',
         JSON.stringify({
           accessToken: data.accessToken,
@@ -102,7 +102,7 @@ client.interceptors.response.use(
       return client(originalRequest);
     } catch (refreshError) {
       processQueue(refreshError, null);
-      sessionStorage.removeItem('auth-tokens');
+      localStorage.removeItem('auth-tokens');
       localStorage.removeItem('auth-storage');
       window.location.href = '/';
       return Promise.reject(refreshError);

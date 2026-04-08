@@ -29,10 +29,11 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
-// Store tokens in sessionStorage (not accessible cross-tab, cleared on browser close)
-function getSessionTokens(): { accessToken: string | null; refreshToken: string | null } {
+// Store tokens in localStorage so users stay logged in across browser restarts.
+// The 7-day refresh token bounds the persistence window; logout clears it.
+function getStoredTokens(): { accessToken: string | null; refreshToken: string | null } {
   try {
-    const raw = sessionStorage.getItem('auth-tokens');
+    const raw = localStorage.getItem('auth-tokens');
     if (raw) {
       return JSON.parse(raw);
     }
@@ -42,15 +43,15 @@ function getSessionTokens(): { accessToken: string | null; refreshToken: string 
   return { accessToken: null, refreshToken: null };
 }
 
-function setSessionTokens(accessToken: string | null, refreshToken: string | null) {
+function setStoredTokens(accessToken: string | null, refreshToken: string | null) {
   if (accessToken && refreshToken) {
-    sessionStorage.setItem('auth-tokens', JSON.stringify({ accessToken, refreshToken }));
+    localStorage.setItem('auth-tokens', JSON.stringify({ accessToken, refreshToken }));
   } else {
-    sessionStorage.removeItem('auth-tokens');
+    localStorage.removeItem('auth-tokens');
   }
 }
 
-const initialTokens = getSessionTokens();
+const initialTokens = getStoredTokens();
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -65,7 +66,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       login: (response: AuthResponse) => {
-        setSessionTokens(response.accessToken, response.refreshToken);
+        setStoredTokens(response.accessToken, response.refreshToken);
         set({
           accessToken: response.accessToken,
           refreshToken: response.refreshToken,
@@ -74,7 +75,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        setSessionTokens(null, null);
+        setStoredTokens(null, null);
         set({
           accessToken: null,
           refreshToken: null,
@@ -83,7 +84,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       refresh: (response: AuthResponse) => {
-        setSessionTokens(response.accessToken, response.refreshToken);
+        setStoredTokens(response.accessToken, response.refreshToken);
         set({
           accessToken: response.accessToken,
           refreshToken: response.refreshToken,
