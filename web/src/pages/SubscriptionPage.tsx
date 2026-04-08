@@ -44,8 +44,16 @@ export default function SubscriptionPage() {
       )
     : [];
 
-  const isTrustedStripeUrl = (url: string) =>
-    url.startsWith('https://checkout.stripe.com/') || url.startsWith('https://billing.stripe.com/');
+  // Exact hostname match to prevent bypass via e.g. https://checkout.stripe.com.evil.com/
+  const TRUSTED_STRIPE_HOSTS = new Set(['checkout.stripe.com', 'billing.stripe.com']);
+  const isTrustedStripeUrl = (url: string) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'https:' && TRUSTED_STRIPE_HOSTS.has(parsed.hostname);
+    } catch {
+      return false;
+    }
+  };
 
   const handleCheckout = async (tier: string) => {
     setActionLoading(tier);

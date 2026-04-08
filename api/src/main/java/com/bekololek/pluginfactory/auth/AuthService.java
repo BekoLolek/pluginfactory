@@ -86,6 +86,9 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("Invalid or expired refresh token"));
 
         if (stored.isRevoked()) {
+            // Reuse of a revoked token is a strong indicator of theft —
+            // invalidate every refresh token for this user to force re-login.
+            refreshTokenRepository.deleteByUserId(stored.getUserId());
             throw new IllegalArgumentException("Invalid or expired refresh token");
         }
 
@@ -97,11 +100,19 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid or expired refresh token"));
 
+        // Rotate: mark the used token as revoked and issue a new refresh token.
+        // If the client ever presents the old token again, the branch above will
+        // trip reuse detection and revoke the entire family.
+        stored.setRevoked(true);
+        refreshTokenRepository.save(stored);
+
         String newAccessToken = jwtService.generateAccessToken(userId, user.getRole().name());
+        String newRefreshToken = jwtService.generateRefreshToken(userId);
+        storeRefreshToken(userId, newRefreshToken);
 
         return new AuthResponse(
                 newAccessToken,
-                refreshToken,
+                newRefreshToken,
                 new AuthResponse.UserInfo(
                         user.getId(),
                         user.getEmail(),

@@ -151,20 +151,29 @@ class AuthServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         when(jwtService.generateAccessToken(any(UUID.class), anyString())).thenReturn("new-access-token");
+        when(jwtService.generateRefreshToken(userId)).thenReturn("rotated-refresh-token");
+        io.jsonwebtoken.Claims rotatedClaims = org.mockito.Mockito.mock(io.jsonwebtoken.Claims.class);
+        when(rotatedClaims.getExpiration())
+                .thenReturn(java.util.Date.from(Instant.now().plusSeconds(604800)));
+        when(jwtService.validateToken("rotated-refresh-token")).thenReturn(rotatedClaims);
 
         AuthResponse response = authService.refreshAccessToken(refreshToken);
 
         assertThat(response.accessToken()).isEqualTo("new-access-token");
-        assertThat(response.refreshToken()).isEqualTo(refreshToken);
+        assertThat(response.refreshToken()).isEqualTo("rotated-refresh-token");
         assertThat(response.user().id()).isEqualTo(userId);
+        // Old token is revoked (rotation) and a new one is persisted.
+        assertThat(storedToken.isRevoked()).isTrue();
+        verify(refreshTokenRepository, org.mockito.Mockito.times(2)).save(any(RefreshToken.class));
     }
 
     @Test
-    void refreshAccessToken_revokedToken() {
+    void refreshAccessToken_revokedToken_triggersReuseDetection() {
         String refreshToken = "revoked-refresh-token";
+        UUID userId = UUID.randomUUID();
 
         RefreshToken storedToken = new RefreshToken();
-        storedToken.setUserId(UUID.randomUUID());
+        storedToken.setUserId(userId);
         storedToken.setExpiresAt(Instant.now().plusSeconds(604800));
         storedToken.setRevoked(true);
 
@@ -173,6 +182,8 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.refreshAccessToken(refreshToken))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid or expired");
+        // Reuse of a revoked token invalidates the entire token family for that user.
+        verify(refreshTokenRepository).deleteByUserId(userId);
     }
 
     @Test

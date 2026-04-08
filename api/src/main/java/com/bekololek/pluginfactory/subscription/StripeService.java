@@ -29,6 +29,7 @@ public class StripeService {
 
     private final SubscriptionRepository subscriptionRepository;
     private final UserRepository userRepository;
+    private final ProcessedStripeEventRepository processedStripeEventRepository;
 
     @Value("${stripe.api-key:}")
     private String apiKey;
@@ -99,6 +100,13 @@ public class StripeService {
 
     @Transactional
     public void handleWebhookEvent(String payload, String sigHeader) {
+        if (webhookSecret == null || webhookSecret.isBlank()) {
+            // Fail closed: without a configured secret we can't prove the
+            // request came from Stripe, so do not process anything.
+            log.error("Stripe webhook secret is not configured; rejecting event");
+            throw new IllegalArgumentException("Webhook secret not configured");
+        }
+
         Event event;
         try {
             event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
@@ -107,15 +115,32 @@ public class StripeService {
             throw new IllegalArgumentException("Invalid signature");
         }
 
+        String eventId = event.getId();
         String eventType = event.getType();
-        log.info("Processing Stripe event: {}", eventType);
+
+        // Idempotency: Stripe retries any non-2xx response (and sometimes on
+        // 2xx, if its client times out), so the same event id can arrive
+        // multiple times. Short-circuit if we've already fully processed it.
+        if (eventId != null && processedStripeEventRepository.existsByEventId(eventId)) {
+            log.info("Stripe event {} ({}) already processed; skipping", eventId, eventType);
+            return;
+        }
+
+        log.info("Processing Stripe event {} ({})", eventId, eventType);
 
         switch (eventType) {
             case "checkout.session.completed" -> handleCheckoutCompleted(event);
             case "customer.subscription.updated" -> handleSubscriptionUpdated(event);
             case "customer.subscription.deleted" -> handleSubscriptionDeleted(event);
             case "invoice.payment_failed" -> handlePaymentFailed(event);
-            default -> log.info("Unhandled event type: {}", eventType);
+            default -> log.info("Unhandled Stripe event type: {}", eventType);
+        }
+
+        if (eventId != null) {
+            ProcessedStripeEvent marker = new ProcessedStripeEvent();
+            marker.setEventId(eventId);
+            marker.setEventType(eventType);
+            processedStripeEventRepository.save(marker);
         }
     }
 
@@ -138,7 +163,10 @@ public class StripeService {
         subscription.setStripeCustomerId(session.getCustomer());
         subscription.setStripeSubscriptionId(session.getSubscription());
         subscription.setStatus(Subscription.SubscriptionStatus.ACTIVE);
+        // Fresh billing period → reset both usage counters so the user gets the
+        // full new quota immediately (not leftover pool from the previous tier).
         subscription.setBuildsUsedThisPeriod(0);
+        subscription.setTokensUsedThisPeriod(0);
         subscriptionRepository.save(subscription);
 
         log.info("Upgraded user {} to tier {}", userId, targetTier);

@@ -43,6 +43,9 @@ class SourceCodeRequestServiceTest {
     @Mock
     private WatermarkService watermarkService;
 
+    @Mock
+    private BuildSessionService buildSessionService;
+
     private SourceCodeRequestService sourceCodeRequestService;
 
     @BeforeEach
@@ -54,8 +57,16 @@ class SourceCodeRequestServiceTest {
                 subscriptionService,
                 userRepository,
                 watermarkService,
+                buildSessionService,
                 "data/artifacts"
         );
+    }
+
+    private BuildSession sessionOwnedBy(UUID userId, UUID sessionId) {
+        BuildSession session = new BuildSession();
+        session.setId(sessionId);
+        session.setUserId(userId);
+        return session;
     }
 
     @Test
@@ -88,13 +99,16 @@ class SourceCodeRequestServiceTest {
     void requestSourceCode_proUser_success() {
         UUID userId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
 
         when(subscriptionService.getTierForUser(userId)).thenReturn(Tier.PRO);
 
         Artifact artifact = new Artifact();
         artifact.setId(artifactId);
-        artifact.setSessionId(UUID.randomUUID());
+        artifact.setSessionId(sessionId);
         when(artifactRepository.findById(artifactId)).thenReturn(Optional.of(artifact));
+        when(buildSessionService.getSessionById(sessionId))
+                .thenReturn(sessionOwnedBy(userId, sessionId));
 
         User user = new User();
         user.setId(userId);
@@ -130,13 +144,16 @@ class SourceCodeRequestServiceTest {
     void requestSourceCode_teamUser_success() {
         UUID userId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
 
         when(subscriptionService.getTierForUser(userId)).thenReturn(Tier.TEAM);
 
         Artifact artifact = new Artifact();
         artifact.setId(artifactId);
-        artifact.setSessionId(UUID.randomUUID());
+        artifact.setSessionId(sessionId);
         when(artifactRepository.findById(artifactId)).thenReturn(Optional.of(artifact));
+        when(buildSessionService.getSessionById(sessionId))
+                .thenReturn(sessionOwnedBy(userId, sessionId));
 
         User user = new User();
         user.setId(userId);
@@ -164,6 +181,28 @@ class SourceCodeRequestServiceTest {
         assertThat(result.userId()).isEqualTo(userId);
         assertThat(result.artifactId()).isEqualTo(artifactId);
         assertThat(result.status()).isEqualTo("PENDING");
+    }
+
+    @Test
+    void requestSourceCode_otherUsersArtifact_forbidden() {
+        UUID userId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        when(subscriptionService.getTierForUser(userId)).thenReturn(Tier.PRO);
+
+        Artifact artifact = new Artifact();
+        artifact.setId(artifactId);
+        artifact.setSessionId(sessionId);
+        when(artifactRepository.findById(artifactId)).thenReturn(Optional.of(artifact));
+        when(buildSessionService.getSessionById(sessionId))
+                .thenReturn(sessionOwnedBy(ownerId, sessionId));
+
+        assertThatThrownBy(() -> sourceCodeRequestService.requestSourceCode(
+                userId, artifactId, "1.0", "127.0.0.1"))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Access denied to artifact");
     }
 
     @Test

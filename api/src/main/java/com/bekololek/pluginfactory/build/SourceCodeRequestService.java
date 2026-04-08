@@ -36,6 +36,7 @@ public class SourceCodeRequestService {
     private final SubscriptionService subscriptionService;
     private final UserRepository userRepository;
     private final WatermarkService watermarkService;
+    private final BuildSessionService buildSessionService;
     private final Path storagePath;
 
     public SourceCodeRequestService(SourceCodeRequestRepository sourceCodeRequestRepository,
@@ -44,6 +45,7 @@ public class SourceCodeRequestService {
                                      SubscriptionService subscriptionService,
                                      UserRepository userRepository,
                                      WatermarkService watermarkService,
+                                     BuildSessionService buildSessionService,
                                      @Value("${artifacts.storage-path:data/artifacts}") String storagePath) {
         this.sourceCodeRequestRepository = sourceCodeRequestRepository;
         this.artifactRepository = artifactRepository;
@@ -51,6 +53,7 @@ public class SourceCodeRequestService {
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
         this.watermarkService = watermarkService;
+        this.buildSessionService = buildSessionService;
         this.storagePath = Path.of(storagePath);
     }
 
@@ -66,6 +69,14 @@ public class SourceCodeRequestService {
         // Validate artifact exists
         Artifact artifact = artifactRepository.findById(artifactId)
                 .orElseThrow(() -> new NotFoundException("Artifact not found"));
+
+        // Validate artifact ownership — the requester must own the session that
+        // produced this artifact. Without this check any PRO/TEAM user could
+        // request (and subsequently fulfill) source code for another user's build.
+        BuildSession session = buildSessionService.getSessionById(artifact.getSessionId());
+        if (!session.getUserId().equals(userId)) {
+            throw new ForbiddenException("Access denied to artifact");
+        }
 
         // Validate user exists
         User user = userRepository.findById(userId)
