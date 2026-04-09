@@ -111,7 +111,30 @@ public class StripeService {
         try {
             event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
         } catch (SignatureVerificationException e) {
-            log.error("Invalid Stripe webhook signature", e);
+            // Real Stripe webhooks always send a header of the form
+            // "t=<unix>,v1=<hex>[,v0=<hex>]". If we can't even parse that
+            // out, the request almost certainly isn't from Stripe — it's
+            // junk traffic (bot scan, misrouted health check, someone
+            // probing the endpoint with curl). Log those at WARN without
+            // a stack trace so they don't look like a real failure.
+            //
+            // A well-formed header that doesn't match our secret, on the
+            // other hand, is worth logging at ERROR: it could be a
+            // rotated-secret misconfiguration, a replay, or a real
+            // tampering attempt, and an operator should actually look.
+            if (isMalformedSignatureHeader(sigHeader)) {
+                log.warn(
+                        "Rejected webhook with malformed Stripe-Signature header " +
+                                "(likely junk traffic, not a real Stripe call): {}",
+                        e.getMessage()
+                );
+            } else {
+                log.error(
+                        "Stripe webhook signature verification failed — " +
+                                "header was well-formed but did not match the configured secret: {}",
+                        e.getMessage()
+                );
+            }
             throw new IllegalArgumentException("Invalid signature");
         }
 
@@ -234,5 +257,19 @@ public class StripeService {
                 .map(Subscription::getUserId)
                 .orElseThrow(() -> new NotFoundException(
                         "No subscription found for Stripe subscription: " + stripeSubscriptionId));
+    }
+
+    /**
+     * Returns true if the Stripe-Signature header is missing the structural
+     * bits that the Stripe SDK's parser requires (a {@code t=} timestamp
+     * and at least one {@code v1=} signature). Anything failing this check
+     * can't possibly be a real Stripe webhook — Stripe always emits a
+     * well-formed header — so we log those at WARN instead of ERROR.
+     */
+    private static boolean isMalformedSignatureHeader(String sigHeader) {
+        if (sigHeader == null || sigHeader.isBlank()) {
+            return true;
+        }
+        return !sigHeader.contains("t=") || !sigHeader.contains("v1=");
     }
 }
