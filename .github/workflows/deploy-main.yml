@@ -102,6 +102,21 @@ jobs:
           echo "Health check failed after 120s"
           exit 1
 
+      - name: Run API smoke tests
+        # Hits the public HTTP surface from outside the VM (via the real
+        # nginx + cert path) and asserts every endpoint we care about
+        # responds correctly. Catches issues that the in-VM /actuator/health
+        # poll above can't see — wrong server_name, broken CORS, expired
+        # cert, accidentally-exposed protected endpoints, etc.
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/infra/smoke-tests:/tests:ro" \
+            ghcr.io/orange-opensource/hurl:latest \
+            --test \
+            --variable base=https://api.pluginfactory.org \
+            /tests/public.hurl \
+            /tests/auth-negative.hurl
+
       - name: Discord notification
         if: always()
         env:
