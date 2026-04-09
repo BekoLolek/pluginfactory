@@ -77,12 +77,12 @@ class ChatbotAgentTest {
         when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
         when(tokenBudgetService.getRemainingBudget(sessionId)).thenReturn(budget);
         when(tokenBudgetService.hasBudget(sessionId, 100)).thenReturn(true);
-        when(modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION)).thenReturn("claude-haiku-4-5-20250929");
+        when(modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION)).thenReturn("claude-haiku-4-5");
         when(modelRouter.getMaxTokens(ModelRouter.TaskType.CLARIFICATION)).thenReturn(2048);
         when(chatMessageService.getMessages(sessionId)).thenReturn(Collections.emptyList());
         when(anthropicClient.sendMessage(anyString(), anyString(), anyList(), anyInt()))
                 .thenReturn(new AnthropicResponse("What kind of teleport features do you want?",
-                        "claude-haiku-4-5-20250929", 150, 50));
+                        "claude-haiku-4-5", 150, 50));
 
         // Act
         AgentResponse response = chatbotAgent.handleMessage(sessionId, userId, userMessage);
@@ -90,7 +90,7 @@ class ChatbotAgentTest {
         // Assert
         assertNotNull(response);
         assertEquals("What kind of teleport features do you want?", response.content());
-        assertEquals("claude-haiku-4-5-20250929", response.model());
+        assertEquals("claude-haiku-4-5", response.model());
         assertEquals(150, response.inputTokens());
         assertEquals(50, response.outputTokens());
         assertNull(response.phaseTransition());
@@ -99,7 +99,7 @@ class ChatbotAgentTest {
         verify(chatMessageService).addMessage(eq(sessionId), eq("user"), eq(userMessage), eq(null), eq(0));
         // Verify assistant message stored
         verify(chatMessageService).addMessage(eq(sessionId), eq("assistant"),
-                eq("What kind of teleport features do you want?"), eq("claude-haiku-4-5-20250929"), eq(200));
+                eq("What kind of teleport features do you want?"), eq("claude-haiku-4-5"), eq(200));
         // Verify token consumption
         verify(tokenBudgetService).consumeTokens(sessionId, "planning", 200);
     }
@@ -146,13 +146,13 @@ class ChatbotAgentTest {
         when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
         when(tokenBudgetService.getRemainingBudget(sessionId)).thenReturn(budget);
         when(tokenBudgetService.hasBudget(sessionId, 100)).thenReturn(true);
-        when(modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION)).thenReturn("claude-haiku-4-5-20250929");
+        when(modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION)).thenReturn("claude-haiku-4-5");
         when(modelRouter.getMaxTokens(ModelRouter.TaskType.CLARIFICATION)).thenReturn(2048);
         when(chatMessageService.getMessages(sessionId)).thenReturn(Collections.emptyList());
         when(anthropicClient.sendMessage(anyString(), anyString(), anyList(), anyInt()))
                 .thenReturn(new AnthropicResponse(
                         "Great, I have enough info to create a plan. [TRANSITION:PLAN_GENERATION]",
-                        "claude-haiku-4-5-20250929", 200, 80));
+                        "claude-haiku-4-5", 200, 80));
         when(planGenerationAgent.generatePlan(sessionId)).thenReturn(generatedPlan);
 
         // Act
@@ -181,12 +181,12 @@ class ChatbotAgentTest {
         when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
         when(tokenBudgetService.getRemainingBudget(sessionId)).thenReturn(budget);
         when(tokenBudgetService.hasBudget(sessionId, 100)).thenReturn(true);
-        when(modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION)).thenReturn("claude-haiku-4-5-20250929");
+        when(modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION)).thenReturn("claude-haiku-4-5");
         when(modelRouter.getMaxTokens(ModelRouter.TaskType.CLARIFICATION)).thenReturn(2048);
         when(chatMessageService.getMessages(sessionId)).thenReturn(Collections.emptyList());
         when(anthropicClient.sendMessage(anyString(), anyString(), anyList(), anyInt()))
                 .thenReturn(new AnthropicResponse("I can help you build a plugin.",
-                        "claude-haiku-4-5-20250929", 100, 40));
+                        "claude-haiku-4-5", 100, 40));
 
         // Act
         AgentResponse response = chatbotAgent.handleMessage(sessionId, userId, userMessage);

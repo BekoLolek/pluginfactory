@@ -13,49 +13,49 @@ class ModelRouterTest {
 
     @Test
     void clarificationUsesHaiku() {
-        assertEquals("claude-haiku-4-5-20250929",
+        assertEquals("claude-haiku-4-5",
                 modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION));
     }
 
     @Test
     void inputValidationUsesHaiku() {
-        assertEquals("claude-haiku-4-5-20250929",
+        assertEquals("claude-haiku-4-5",
                 modelRouter.selectModel(ModelRouter.TaskType.INPUT_VALIDATION));
     }
 
     @Test
     void errorClassificationUsesHaiku() {
-        assertEquals("claude-haiku-4-5-20250929",
+        assertEquals("claude-haiku-4-5",
                 modelRouter.selectModel(ModelRouter.TaskType.ERROR_CLASSIFICATION));
     }
 
     @Test
     void complexityEstimationUsesSonnet() {
-        assertEquals("claude-sonnet-4-5-20250514",
+        assertEquals("claude-sonnet-4-5",
                 modelRouter.selectModel(ModelRouter.TaskType.COMPLEXITY_ESTIMATION));
     }
 
     @Test
     void planGenerationUsesSonnet() {
-        assertEquals("claude-sonnet-4-5-20250514",
+        assertEquals("claude-sonnet-4-5",
                 modelRouter.selectModel(ModelRouter.TaskType.PLAN_GENERATION));
     }
 
     @Test
     void codeGenerationUsesSonnet() {
-        assertEquals("claude-sonnet-4-5-20250514",
+        assertEquals("claude-sonnet-4-5",
                 modelRouter.selectModel(ModelRouter.TaskType.CODE_GENERATION));
     }
 
     @Test
     void testGenerationUsesSonnet() {
-        assertEquals("claude-sonnet-4-5-20250514",
+        assertEquals("claude-sonnet-4-5",
                 modelRouter.selectModel(ModelRouter.TaskType.TEST_GENERATION));
     }
 
     @Test
     void securityAnalysisUsesSonnet() {
-        assertEquals("claude-sonnet-4-5-20250514",
+        assertEquals("claude-sonnet-4-5",
                 modelRouter.selectModel(ModelRouter.TaskType.SECURITY_ANALYSIS));
     }
 

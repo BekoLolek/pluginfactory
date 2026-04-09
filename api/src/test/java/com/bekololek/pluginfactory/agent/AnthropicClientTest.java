@@ -39,7 +39,7 @@ class AnthropicClientTest {
 
         Map<String, Object> responseBody = Map.of(
                 "content", List.of(Map.of("type", "text", "text", "Hello from Claude")),
-                "model", "claude-haiku-4-5-20250929",
+                "model", "claude-haiku-4-5",
                 "usage", Map.of("input_tokens", 100, "output_tokens", 50)
         );
 
@@ -55,12 +55,12 @@ class AnthropicClientTest {
 
         // Act
         AnthropicResponse response = client.sendMessage(
-                "claude-haiku-4-5-20250929", "System prompt", messages, 2048);
+                "claude-haiku-4-5", "System prompt", messages, 2048);
 
         // Assert
         assertNotNull(response);
         assertEquals("Hello from Claude", response.content());
-        assertEquals("claude-haiku-4-5-20250929", response.model());
+        assertEquals("claude-haiku-4-5", response.model());
         assertEquals(100, response.inputTokens());
         assertEquals(50, response.outputTokens());
 
@@ -85,7 +85,7 @@ class AnthropicClientTest {
 
         Map<String, Object> responseBody = Map.of(
                 "content", List.of(Map.of("type", "text", "text", "Response")),
-                "model", "claude-sonnet-4-5-20250514",
+                "model", "claude-sonnet-4-5",
                 "usage", Map.of("input_tokens", 200, "output_tokens", 100)
         );
 
@@ -98,7 +98,7 @@ class AnthropicClientTest {
 
         // Act
         AnthropicResponse response = client.sendMessage(
-                "claude-sonnet-4-5-20250514", "Plan system prompt", messages, 8192);
+                "claude-sonnet-4-5", "Plan system prompt", messages, 8192);
 
         // Assert
         ArgumentCaptor<HttpEntity> captor = ArgumentCaptor.forClass(HttpEntity.class);
@@ -107,7 +107,7 @@ class AnthropicClientTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> body = (Map<String, Object>) captor.getValue().getBody();
         assertNotNull(body);
-        assertEquals("claude-sonnet-4-5-20250514", body.get("model"));
+        assertEquals("claude-sonnet-4-5", body.get("model"));
         assertEquals(8192, body.get("max_tokens"));
         assertEquals("Plan system prompt", body.get("system"));
         assertNotNull(body.get("messages"));
@@ -125,6 +125,6 @@ class AnthropicClientTest {
         );
 
         assertThrows(RuntimeException.class, () ->
-                client.sendMessage("claude-haiku-4-5-20250929", "System", messages, 2048));
+                client.sendMessage("claude-haiku-4-5", "System", messages, 2048));
     }
 }

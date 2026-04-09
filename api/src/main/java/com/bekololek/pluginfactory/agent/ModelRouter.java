@@ -16,8 +16,10 @@ public class ModelRouter {
         SECURITY_ANALYSIS
     }
 
-    private static final String HAIKU = "claude-haiku-4-5-20250929";
-    private static final String SONNET = "claude-sonnet-4-5-20250514";
+    // Unversioned aliases always resolve to the current snapshot, so we don't
+    // have to chase model-release dates every time Anthropic ships a new one.
+    private static final String HAIKU = "claude-haiku-4-5";
+    private static final String SONNET = "claude-sonnet-4-5";
 
     public String selectModel(TaskType taskType) {
         return switch (taskType) {
