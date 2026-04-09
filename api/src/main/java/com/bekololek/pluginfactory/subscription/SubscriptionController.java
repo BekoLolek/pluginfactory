@@ -51,11 +51,15 @@ public class SubscriptionController {
     public ResponseEntity<SubscriptionDto> getCurrentSubscription() {
         UUID userId = AuthenticatedUser.getCurrentUserId();
         Subscription subscription = subscriptionService.getCurrentSubscription(userId);
+        // Report the live billable count (excludes FAILED/CANCELLED) so
+        // the UI's "X/Y builds used" matches what canBuild actually
+        // enforces, instead of the stale denormalized counter.
+        int billableCount = (int) subscriptionService.getBillableBuildCount(userId);
         SubscriptionDto dto = new SubscriptionDto(
                 subscription.getId(),
                 subscription.getTier().name(),
                 subscription.getStatus().name(),
-                subscription.getBuildsUsedThisPeriod(),
+                billableCount,
                 subscription.getCurrentPeriodStart(),
                 subscription.getCurrentPeriodEnd(),
                 subscription.getCreatedAt()
