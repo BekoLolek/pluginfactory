@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -95,15 +96,14 @@ class BuildPipelineServiceTest {
         ImplementationResult implResult = new ImplementationResult(files, 500);
         when(implementerAgent.implement(sessionId)).thenReturn(implResult);
 
-        when(buildIterationRepository.findBySessionIdOrderByIterationNumberAsc(sessionId))
-                .thenReturn(Collections.emptyList());
-        when(buildIterationRepository.save(any(BuildIteration.class))).thenAnswer(invocation -> {
-            BuildIteration it = invocation.getArgument(0);
-            if (it.getId() == null) {
-                it.setId(UUID.randomUUID());
-            }
-            return it;
-        });
+        UUID iterationId = UUID.randomUUID();
+        BuildIteration stubIteration = new BuildIteration();
+        stubIteration.setId(iterationId);
+        stubIteration.setSessionId(sessionId);
+        stubIteration.setIterationNumber(1);
+        stubIteration.setStatus("RUNNING");
+        when(buildIterationRepository.findById(iterationId)).thenReturn(Optional.of(stubIteration));
+        when(buildIterationRepository.save(any(BuildIteration.class))).thenAnswer(inv -> inv.getArgument(0));
 
         String containerId = "container-123";
         when(containerPoolManager.claimContainer(DockerService.ContainerType.BUILD)).thenReturn(containerId);
@@ -123,7 +123,7 @@ class BuildPipelineServiceTest {
                 .thenReturn(new Artifact());
 
         // Act
-        buildPipelineService.executeBuild(sessionId);
+        buildPipelineService.executeBuild(sessionId, iterationId);
 
         // Assert - verify all phases were traversed
         verify(buildSessionService).updatePhase(sessionId, BuildPhase.IMPLEMENTATION);
@@ -164,15 +164,14 @@ class BuildPipelineServiceTest {
         ImplementationResult implResult = new ImplementationResult(files, 300);
         when(implementerAgent.implement(sessionId)).thenReturn(implResult);
 
-        when(buildIterationRepository.findBySessionIdOrderByIterationNumberAsc(sessionId))
-                .thenReturn(Collections.emptyList());
-        when(buildIterationRepository.save(any(BuildIteration.class))).thenAnswer(invocation -> {
-            BuildIteration it = invocation.getArgument(0);
-            if (it.getId() == null) {
-                it.setId(UUID.randomUUID());
-            }
-            return it;
-        });
+        UUID iterationId = UUID.randomUUID();
+        BuildIteration stubIteration = new BuildIteration();
+        stubIteration.setId(iterationId);
+        stubIteration.setSessionId(sessionId);
+        stubIteration.setIterationNumber(1);
+        stubIteration.setStatus("RUNNING");
+        when(buildIterationRepository.findById(iterationId)).thenReturn(Optional.of(stubIteration));
+        when(buildIterationRepository.save(any(BuildIteration.class))).thenAnswer(inv -> inv.getArgument(0));
 
         String containerId = "container-456";
         when(containerPoolManager.claimContainer(DockerService.ContainerType.BUILD)).thenReturn(containerId);
@@ -189,7 +188,7 @@ class BuildPipelineServiceTest {
         when(retryPolicy.shouldRetry(any(), any(), eq(0))).thenReturn(false);
 
         // Act
-        buildPipelineService.executeBuild(sessionId);
+        buildPipelineService.executeBuild(sessionId, iterationId);
 
         // Assert - verify error handling
         verify(buildSessionService).updateStatus(sessionId, BuildStatus.FAILED);
@@ -217,15 +216,14 @@ class BuildPipelineServiceTest {
         ImplementationResult implResult = new ImplementationResult(files, 400);
         when(implementerAgent.implement(sessionId)).thenReturn(implResult);
 
-        when(buildIterationRepository.findBySessionIdOrderByIterationNumberAsc(sessionId))
-                .thenReturn(Collections.emptyList());
-        when(buildIterationRepository.save(any(BuildIteration.class))).thenAnswer(invocation -> {
-            BuildIteration it = invocation.getArgument(0);
-            if (it.getId() == null) {
-                it.setId(UUID.randomUUID());
-            }
-            return it;
-        });
+        UUID iterationId = UUID.randomUUID();
+        BuildIteration stubIteration = new BuildIteration();
+        stubIteration.setId(iterationId);
+        stubIteration.setSessionId(sessionId);
+        stubIteration.setIterationNumber(1);
+        stubIteration.setStatus("RUNNING");
+        when(buildIterationRepository.findById(iterationId)).thenReturn(Optional.of(stubIteration));
+        when(buildIterationRepository.save(any(BuildIteration.class))).thenAnswer(inv -> inv.getArgument(0));
 
         String containerId = "container-789";
         when(containerPoolManager.claimContainer(DockerService.ContainerType.BUILD)).thenReturn(containerId);
@@ -247,7 +245,7 @@ class BuildPipelineServiceTest {
         when(retryPolicy.shouldRetry(any(), eq(ErrorClassifier.ErrorCategory.SECURITY), eq(0))).thenReturn(false);
 
         // Act
-        buildPipelineService.executeBuild(sessionId);
+        buildPipelineService.executeBuild(sessionId, iterationId);
 
         // Assert - verify security failure handling
         verify(buildSessionService).updateStatus(sessionId, BuildStatus.FAILED);

@@ -8,4 +8,6 @@ import java.util.UUID;
 public interface BuildIterationRepository extends JpaRepository<BuildIteration, UUID> {
 
     List<BuildIteration> findBySessionIdOrderByIterationNumberAsc(UUID sessionId);
+
+    List<BuildIteration> findByStatus(String status);
 }

@@ -8,4 +8,6 @@ import java.util.UUID;
 public interface ContainerSessionRepository extends JpaRepository<ContainerSession, UUID> {
 
     List<ContainerSession> findByIterationId(UUID iterationId);
+
+    List<ContainerSession> findByReleasedAtIsNull();
 }

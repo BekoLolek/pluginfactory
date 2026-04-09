@@ -2,6 +2,7 @@ package com.bekololek.pluginfactory.build;
 
 import com.bekololek.pluginfactory.agent.ImplementerAgent;
 import com.bekololek.pluginfactory.agent.dto.ImplementationResult;
+import com.bekololek.pluginfactory.common.config.AsyncConfig;
 import com.bekololek.pluginfactory.container.ContainerPoolManager;
 import com.bekololek.pluginfactory.container.ContainerSession;
 import com.bekololek.pluginfactory.container.ContainerSessionRepository;
@@ -11,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -42,19 +44,65 @@ public class BuildPipelineService {
     private final RetryPolicy retryPolicy;
     private final ChatMessageService chatMessageService;
 
-    public void executeBuild(UUID sessionId) {
-        // Create BuildIteration
-        int iterationNumber = buildIterationRepository
-                .findBySessionIdOrderByIterationNumberAsc(sessionId).size() + 1;
+    /**
+     * Runs the full build pipeline off the request thread.
+     *
+     * <p>Annotated with {@link Async} and bound to the dedicated
+     * {@link AsyncConfig#BUILD_EXECUTOR} pool so HTTP threads never
+     * block on a multi-minute Maven compile and so concurrency is
+     * bounded to a sane number regardless of caller churn.
+     *
+     * <p>IMPORTANT: because this method is async, any exception that
+     * escapes here is invisible to the caller. We therefore wrap the
+     * entire body in a catch-all that converts unexpected failures
+     * into a {@code FAILED} session status — without this, an
+     * unhandled NPE or runtime error would leave the session stuck
+     * in {@code BUILDING} exactly like the restart scenario we're
+     * trying to avoid.
+     *
+     * <p>Prefer calling {@code BuildLauncher.startBuild(...)} instead
+     * of this method directly so you get a synchronously-created
+     * iteration row to return to the client.
+     */
+    @Async(AsyncConfig.BUILD_EXECUTOR)
+    public void executeBuild(UUID sessionId, UUID iterationId) {
+        try {
+            executeBuildInternal(sessionId, iterationId);
+        } catch (Throwable t) {
+            // Defense in depth: executeBuildInternal already catches
+            // Exception and marks the session FAILED via
+            // handleBuildError. This outer catch exists for Errors
+            // and anything else that slipped past — we never want an
+            // async build to silently leave a session in BUILDING.
+            log.error("Unhandled error in async build for session {}", sessionId, t);
+            try {
+                buildSessionService.updateStatus(sessionId, BuildStatus.FAILED);
+                buildSessionService.updatePhase(sessionId, BuildPhase.IDLE);
+                buildProgressService.notifyStatusChange(sessionId, BuildStatus.FAILED);
+                buildProgressService.notifyError(sessionId,
+                        "Build crashed unexpectedly: " + t.getMessage());
+            } catch (Exception secondary) {
+                log.error("Failed to mark session {} as FAILED after crash", sessionId, secondary);
+            }
+            if (t instanceof Error) {
+                throw (Error) t;
+            }
+        }
+    }
 
-        BuildIteration iteration = new BuildIteration();
-        iteration.setSessionId(sessionId);
-        iteration.setIterationNumber(iterationNumber);
-        iteration.setStatus("RUNNING");
-        iteration.setTrigger("INITIAL");
-        iteration = buildIterationRepository.save(iteration);
+    private void executeBuildInternal(UUID sessionId, UUID iterationId) {
+        // Take ownership of the status lifecycle: no matter what status
+        // the caller left the session in (APPROVED from approvePlan or
+        // BUILDING from iterate), we move it into BUILDING here so the
+        // whole pipeline has a single, predictable starting state. This
+        // also doubles as the "worker picked up the job" signal for
+        // clients that poll session status.
+        buildSessionService.updateStatus(sessionId, BuildStatus.BUILDING);
+        buildProgressService.notifyStatusChange(sessionId, BuildStatus.BUILDING);
 
-        UUID iterationId = iteration.getId();
+        BuildIteration iteration = buildIterationRepository.findById(iterationId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Iteration " + iterationId + " not found for session " + sessionId));
 
         try {
             // Phase 1: IMPLEMENTATION

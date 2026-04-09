@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,4 +20,8 @@ public interface BuildSessionRepository extends JpaRepository<BuildSession, UUID
     long countByUserIdAndStatusIn(UUID userId, List<BuildStatus> statuses);
 
     List<BuildSession> findByWorkspaceId(UUID workspaceId);
+
+    List<BuildSession> findByStatusIn(List<BuildStatus> statuses);
+
+    List<BuildSession> findByStatusInAndUpdatedAtBefore(List<BuildStatus> statuses, Instant cutoff);
 }

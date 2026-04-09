@@ -1,6 +1,7 @@
 package com.bekololek.pluginfactory.plan;
 
 import com.bekololek.pluginfactory.agent.PlanGenerationAgent;
+import com.bekololek.pluginfactory.build.BuildLauncher;
 import com.bekololek.pluginfactory.build.BuildPhase;
 import com.bekololek.pluginfactory.build.BuildSession;
 import com.bekololek.pluginfactory.build.BuildSessionService;
@@ -47,6 +48,7 @@ public class PlanController {
     private final ScopeGatingService scopeGatingService;
     private final PlanGenerationAgent planGenerationAgent;
     private final ChatMessageService chatMessageService;
+    private final BuildLauncher buildLauncher;
     private final ObjectMapper objectMapper;
 
     @GetMapping("/{sessionId}/plan")
@@ -72,8 +74,13 @@ public class PlanController {
         ScopeGatingService.ScopeValidationResult result = scopeGatingService.validateScope(plan, tier);
 
         if (result.status() == ScopeGatingService.ScopeStatus.PASS) {
+            // APPROVED is the "queued for build" marker; the pipeline
+            // itself flips it to BUILDING when the worker picks it up.
+            // Without this kickoff call the session would stay in
+            // APPROVED forever because nothing else transitions it.
             buildSessionService.updateStatus(sessionId, BuildStatus.APPROVED);
-            return ResponseEntity.ok(toDto(plan));
+            buildLauncher.startBuild(sessionId, "INITIAL");
+            return ResponseEntity.accepted().body(toDto(plan));
         }
 
         ScopeValidationResultDto validationDto = new ScopeValidationResultDto(

@@ -3,6 +3,7 @@ package com.bekololek.pluginfactory.plan;
 import com.bekololek.pluginfactory.agent.PlanGenerationAgent;
 import com.bekololek.pluginfactory.auth.JwtAuthenticationFilter;
 import com.bekololek.pluginfactory.auth.JwtService;
+import com.bekololek.pluginfactory.build.BuildLauncher;
 import com.bekololek.pluginfactory.build.BuildSession;
 import com.bekololek.pluginfactory.build.BuildSessionService;
 import com.bekololek.pluginfactory.build.ChatMessageService;
@@ -75,6 +76,9 @@ class PlanControllerTest {
     @MockBean
     private ChatMessageService chatMessageService;
 
+    @MockBean
+    private BuildLauncher buildLauncher;
+
     private final UUID userId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
 
@@ -137,8 +141,10 @@ class PlanControllerTest {
 
         mockMvc.perform(post("/api/v1/builds/{sessionId}/plan/approve", sessionId)
                         .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.pluginName").value("TestPlugin"));
+
+        verify(buildLauncher).startBuild(sessionId, "INITIAL");
     }
 
     @Test

@@ -19,7 +19,7 @@ public class IterationService {
     private final SubscriptionService subscriptionService;
     private final TokenBudgetService tokenBudgetService;
     private final ChatMessageService chatMessageService;
-    private final BuildPipelineService buildPipelineService;
+    private final BuildLauncher buildLauncher;
 
     public BuildIteration requestIteration(UUID sessionId, UUID userId, String feedback) {
         // 1. Load session, verify ownership, verify status == COMPLETED
@@ -52,13 +52,11 @@ public class IterationService {
         // 5. Update session status back to BUILDING
         buildSessionService.updateStatus(sessionId, BuildStatus.BUILDING);
 
-        // 6. Call buildPipelineService.executeBuild(sessionId)
-        buildPipelineService.executeBuild(sessionId);
-
-        // 7. Return the new iteration (last one in the list)
-        List<BuildIteration> iterations = buildIterationRepository
-                .findBySessionIdOrderByIterationNumberAsc(sessionId);
-        return iterations.get(iterations.size() - 1);
+        // 6. Kick off the async pipeline. startBuild creates the
+        // BuildIteration row synchronously and hands off to the
+        // async worker, so we can return the iteration immediately
+        // without racing the worker on the DB.
+        return buildLauncher.startBuild(sessionId, "MANUAL_ITERATION");
     }
 
     public List<BuildIteration> listIterations(UUID sessionId) {

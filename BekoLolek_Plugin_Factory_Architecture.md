@@ -1007,6 +1007,21 @@ A ComplexityScore is computed from the plan document and compared against the us
 
 Each BuildIteration represents a single attempt to generate, compile, and test the plugin. Iterations are numbered sequentially within a session. Each iteration creates a ContainerSession --- a record of the Docker container used, its resource allocation, and lifecycle timestamps. Build errors are classified and stored with their category (recoverable, structural, security), retry count, and stack trace. When an iteration succeeds, it produces an Artifact.
 
+**19.5.1 Build Pipeline Execution Model**
+
+The build pipeline runs asynchronously off the HTTP request thread. When a user approves a plan (`POST /builds/{sessionId}/plan/approve`) or requests an iteration (`POST /builds/{sessionId}/iterations`), the controller delegates to a thin `BuildLauncher` service. The launcher synchronously creates the `BuildIteration` row (so the API can return a real, persisted iteration immediately) and then calls `BuildPipelineService.executeBuild(sessionId, iterationId)`, which is annotated `@Async` and runs on a dedicated `buildPipelineExecutor` thread pool (core 2 / max 4 / queue 16, graceful shutdown with 120s drain). The launcher and the pipeline live in separate Spring beans on purpose: Spring's async proxy only fires when the call crosses a bean boundary, so a self-invocation from inside `BuildPipelineService` would silently run synchronously and block the HTTP thread. The controllers respond `202 Accepted` and clients poll session status or subscribe to the WebSocket progress stream.
+
+The pipeline body is wrapped in a top-level `try/catch (Throwable)` that marks the session `FAILED` on any unhandled error. This is defense-in-depth so an async worker exception can never strand a session in `BUILDING`.
+
+**19.5.2 Build Recovery & Stuck-Build Reaping**
+
+Two complementary mechanisms guarantee that sessions never get permanently stuck in a transient state:
+
+- **Restart recovery.** `BuildRecoveryService` listens for Spring's `ApplicationReadyEvent`. On boot it sweeps any session whose status is `PLANNING`, `APPROVED`, `BUILDING`, or `TESTING` --- these were mid-flight when the previous JVM died --- and transitions them to `FAILED` with a chat message explaining the restart, while also releasing any open `ContainerSession` rows.
+- **Stale-build reaper.** A `@Scheduled(fixedDelay = 2 minutes)` job inside the same service queries `findByStatusInAndUpdatedAtBefore(transientStatuses, now - 15 minutes)` and recovers any session whose `updatedAt` heartbeat has gone cold. Hibernate's `@PreUpdate` on `BaseEntity.updatedAt` provides the heartbeat for free --- every status, phase, or progress write naturally bumps the timestamp, so no schema migration was needed. This catches workers that wedged on a Docker call, an Anthropic API hang, or any other silent failure mode that didn't throw.
+
+Both paths share a single `recoverSession(session, now, reason)` helper so the recovery logic --- update status, append a chat message, release containers --- is identical regardless of trigger.
+
 **19.6 Artifact, Source Bundle & Marketplace Listing**
 
 Artifact represents a compiled JAR file with its metadata: file hash (SHA-256 for integrity verification), file size, plugin.yml contents, and security scan results. Artifacts are stored in S3-compatible object storage with the file path recorded in the database.

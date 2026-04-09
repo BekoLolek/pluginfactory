@@ -40,7 +40,7 @@ class IterationServiceTest {
     private ChatMessageService chatMessageService;
 
     @Mock
-    private BuildPipelineService buildPipelineService;
+    private BuildLauncher buildLauncher;
 
     @InjectMocks
     private IterationService iterationService;
@@ -67,8 +67,7 @@ class IterationServiceTest {
         BuildIteration existingIteration = new BuildIteration();
         existingIteration.setIterationNumber(1);
         when(buildIterationRepository.findBySessionIdOrderByIterationNumberAsc(sessionId))
-                .thenReturn(List.of(existingIteration))
-                .thenReturn(List.of(existingIteration, createCompletedIteration(2)));
+                .thenReturn(List.of(existingIteration));
 
         TokenBudget budget = new TokenBudget();
         budget.setAllocatedTokens(500_000);
@@ -76,6 +75,9 @@ class IterationServiceTest {
         when(tokenBudgetService.getRemainingBudget(sessionId)).thenReturn(budget);
 
         when(buildSessionService.updateStatus(sessionId, BuildStatus.BUILDING)).thenReturn(session);
+
+        BuildIteration launched = createCompletedIteration(2);
+        when(buildLauncher.startBuild(sessionId, "MANUAL_ITERATION")).thenReturn(launched);
 
         // Act
         BuildIteration result = iterationService.requestIteration(sessionId, userId, "Add a /heal command");
@@ -85,7 +87,7 @@ class IterationServiceTest {
         assertThat(result.getIterationNumber()).isEqualTo(2);
         verify(chatMessageService).addMessage(eq(sessionId), eq("user"), eq("Add a /heal command"), eq(null), eq(0));
         verify(buildSessionService).updateStatus(sessionId, BuildStatus.BUILDING);
-        verify(buildPipelineService).executeBuild(sessionId);
+        verify(buildLauncher).startBuild(sessionId, "MANUAL_ITERATION");
     }
 
     @Test
