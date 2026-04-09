@@ -38,12 +38,12 @@ export default function BuildDetailPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, sendMessage.isPending]);
 
-  // The starter questionnaire shows on a fresh session until the user
-  // either answers it, sends their first message, or explicitly skips it.
-  // Skip state is local-only — it resets on page reload, which is fine
-  // because once there's a real message in the chat the questionnaire
-  // won't reappear anyway.
-  const [questionnaireSkipped, setQuestionnaireSkipped] = useState(false);
+  // The starter questionnaire shows on a fresh session as a standalone
+  // view until the user either submits it or explicitly skips it. Once
+  // dismissed, the chat panel replaces it. Local-only — resets on page
+  // reload, which is fine because once there's a real message in the
+  // chat the questionnaire won't reappear anyway.
+  const [chatStarted, setChatStarted] = useState(false);
 
   if (isLoading) {
     return (
@@ -96,7 +96,19 @@ export default function BuildDetailPage() {
   const isCancelled = build.status === 'CANCELLED';
   const showChat = isChatting || isPlanning;
 
+  // Show the questionnaire standalone (not inside the chat panel) on a
+  // fresh CHATTING session until the user either submits or skips it.
+  // If the session already has messages, we're past the questionnaire.
+  const hasMessages = (messages?.length ?? 0) > 0;
+  const showQuestionnaire =
+    isChatting && !chatStarted && !hasMessages && !sendMessage.isPending;
+
   const handleSend = (content: string) => {
+    sendMessage.mutate(content);
+  };
+
+  const handleQuestionnaireSubmit = (content: string) => {
+    setChatStarted(true);
     sendMessage.mutate(content);
   };
 
@@ -147,8 +159,19 @@ export default function BuildDetailPage() {
 
       {/* Main content area - based on status */}
       <div className="flex-1 min-h-0 flex flex-col">
-        {/* CHATTING state: Chat interface */}
-        {showChat && (
+        {/* Fresh CHATTING session: show the questionnaire on its own */}
+        {showQuestionnaire && (
+          <div className="flex items-start justify-center pt-4">
+            <StarterQuestionnaire
+              onSubmit={handleQuestionnaireSubmit}
+              onSkip={() => setChatStarted(true)}
+              disabled={sendMessage.isPending}
+            />
+          </div>
+        )}
+
+        {/* CHATTING / PLANNING: chat panel (only after questionnaire is dismissed) */}
+        {showChat && !showQuestionnaire && (
           <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
             {/*
              * Messages scroll region.
@@ -166,40 +189,30 @@ export default function BuildDetailPage() {
               aria-live="polite"
               aria-relevant="additions"
             >
-              {(!messages || messages.length === 0) &&
-                !sendMessage.isPending &&
-                (isChatting && !questionnaireSkipped ? (
-                  <div className="flex items-center justify-center min-h-full py-6">
-                    <StarterQuestionnaire
-                      onSubmit={handleSend}
-                      onSkip={() => setQuestionnaireSkipped(true)}
-                      disabled={sendMessage.isPending}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center">
-                      <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center mx-auto mb-3">
-                        <svg
-                          className="w-6 h-6 text-blue-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                          />
-                        </svg>
-                      </div>
-                      <p className="text-slate-400 text-sm">
-                        Describe your Minecraft plugin idea to get started.
-                      </p>
+              {!hasMessages && !sendMessage.isPending && (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center mx-auto mb-3">
+                      <svg
+                        className="w-6 h-6 text-blue-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                        />
+                      </svg>
                     </div>
+                    <p className="text-slate-400 text-sm">
+                      Describe your Minecraft plugin idea to get started.
+                    </p>
                   </div>
-                ))}
+                </div>
+              )}
               {messages?.map((msg) => (
                 <ChatMessage key={msg.id} message={msg} />
               ))}

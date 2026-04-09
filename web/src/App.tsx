@@ -8,6 +8,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import LandingPage from '@/pages/LandingPage';
 import LoginPage from '@/pages/LoginPage';
+import StatusPage from '@/pages/StatusPage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import DashboardPage from '@/pages/DashboardPage';
 import NewBuildPage from '@/pages/NewBuildPage';
@@ -54,6 +55,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/status" element={<StatusPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
             <Route

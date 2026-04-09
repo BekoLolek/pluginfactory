@@ -67,9 +67,7 @@ export default function ServiceUnavailablePage() {
         <p className="mt-4 text-xs text-slate-600">
           If this keeps happening, check{' '}
           <a
-            href="https://status.pluginfactory.org"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/status"
             className="text-slate-500 hover:text-slate-300 transition-colors underline"
           >
             our status page

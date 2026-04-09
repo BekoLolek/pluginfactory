@@ -200,6 +200,9 @@ export default function LandingPage() {
               <DiscordGlyph />
               Support
             </a>
+            <Link to="/status" className="hover:text-slate-100 transition-colors">
+              Status
+            </Link>
           </div>
 
           {isAuthenticated ? (
@@ -566,6 +569,9 @@ export default function LandingPage() {
             <a href="#pricing" className="hover:text-slate-300 transition-colors">
               Pricing
             </a>
+            <Link to="/status" className="hover:text-slate-300 transition-colors">
+              Status
+            </Link>
             <a
               href={DISCORD_SUPPORT_URL}
               target="_blank"
