@@ -2,6 +2,7 @@ package com.bekololek.pluginfactory.build;
 
 import com.bekololek.pluginfactory.container.ContainerSession;
 import com.bekololek.pluginfactory.container.ContainerSessionRepository;
+import com.bekololek.pluginfactory.subscription.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -125,6 +126,7 @@ public class BuildRecoveryService {
     private final BuildIterationRepository buildIterationRepository;
     private final BuildErrorRepository buildErrorRepository;
     private final ContainerSessionRepository containerSessionRepository;
+    private final SubscriptionService subscriptionService;
 
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
@@ -246,6 +248,15 @@ public class BuildRecoveryService {
             error.setRetryCount(0);
             buildErrorRepository.save(error);
         }
+
+        // Refund the build slot. We bypass BuildSessionService.updateStatus
+        // because recovery needs to set status + phase + completedAt
+        // atomically and write a BuildError, so we have to invoke the
+        // refund explicitly here. The session was filtered into this
+        // method by TRANSIENT_STATUSES, so previousStatus is by
+        // construction non-terminal — an unconditional refund is safe and
+        // refundBuildSlot itself clamps at 0 as a final safety net.
+        subscriptionService.refundBuildSlot(session.getUserId());
 
         log.info(
                 "Build recovery: session {} recovered (was {}/{}).",
