@@ -125,24 +125,58 @@ const QUESTIONS: Question[] = [
   },
 ];
 
-function composeMessage(answers: Record<string, string>): string {
-  const lines: string[] = [];
+const IDEA_MAX = 1000;
+const COMMANDS_MAX = 500;
+
+/**
+ * Stitches all free-text fields, multi-choice answers, and the
+ * always-included permissions requirement into a single first message
+ * for the assistant.
+ */
+function composeFullMessage(
+  idea: string,
+  commands: string,
+  answers: Record<string, string>,
+): string {
+  const sections: string[] = [];
+
+  const trimmedIdea = idea.trim();
+  const trimmedCommands = commands.trim();
+
+  if (trimmedIdea) {
+    sections.push(`**Idea**\n${trimmedIdea}`);
+  }
+
+  const bulletLines: string[] = [];
   for (const q of QUESTIONS) {
     const a = answers[q.id];
     if (a === undefined) continue;
     const rendered = q.render(a);
-    if (rendered) lines.push(`- ${rendered}`);
+    if (rendered) bulletLines.push(`- ${rendered}`);
   }
-  if (lines.length === 0) {
-    // No hard answers — user just wants to dive in.
-    return "Let's get started. I'd like help figuring out what plugin to build.";
+  if (bulletLines.length > 0) {
+    sections.push(`**Basics**\n${bulletLines.join('\n')}`);
   }
-  return [
-    "Here's what I know so far:",
-    ...lines,
-    '',
-    "Let's figure out the rest together.",
-  ].join('\n');
+
+  if (trimmedCommands) {
+    sections.push(`**Commands I have in mind**\n${trimmedCommands}`);
+  }
+
+  // Permissions are non-negotiable — every plugin we generate should
+  // ship with proper permission nodes, so we tell the assistant that up
+  // front rather than asking the user about it.
+  sections.push(
+    '**Permissions**\nPlease design proper permission nodes for every command and sensitive feature, and document them in plugin.yml.',
+  );
+
+  if (sections.length === 1) {
+    // Only the permissions rule — user gave us nothing else. Fall back
+    // to an open-ended kickoff so the assistant drives the conversation.
+    return "Let's get started. I'd like help figuring out what plugin to build. Please design proper permission nodes for every command and sensitive feature.";
+  }
+
+  sections.push("Let's figure out the rest together.");
+  return sections.join('\n\n');
 }
 
 export default function StarterQuestionnaire({
@@ -151,6 +185,8 @@ export default function StarterQuestionnaire({
   disabled = false,
 }: StarterQuestionnaireProps) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [idea, setIdea] = useState('');
+  const [commands, setCommands] = useState('');
 
   const setAnswer = (questionId: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -158,10 +194,12 @@ export default function StarterQuestionnaire({
 
   const handleSubmit = () => {
     if (disabled) return;
-    onSubmit(composeMessage(answers));
+    onSubmit(composeFullMessage(idea, commands, answers));
   };
 
   const answeredCount = Object.keys(answers).length;
+  const hasAnyInput =
+    answeredCount > 0 || idea.trim().length > 0 || commands.trim().length > 0;
 
   return (
     <div className="w-full max-w-2xl mx-auto">
@@ -181,6 +219,35 @@ export default function StarterQuestionnaire({
         </div>
 
         <div className="space-y-5">
+          {/* Free-text: the core idea. Optional but encouraged. */}
+          <div>
+            <label
+              htmlFor="starter-idea"
+              className="text-sm font-medium text-slate-200 mb-1 block"
+            >
+              Basic idea
+            </label>
+            <p className="text-xs text-slate-500 mb-2">
+              One or two sentences on what you want the plugin to do. Don't
+              worry about polish — it's just a starting point.
+            </p>
+            <textarea
+              id="starter-idea"
+              value={idea}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v.length <= IDEA_MAX) setIdea(v);
+              }}
+              disabled={disabled}
+              rows={3}
+              placeholder="e.g. A shop plugin where players can buy and sell items using in-game currency, with a GUI for browsing."
+              className="w-full resize-none rounded-lg bg-slate-900/80 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            />
+            <div className="mt-1 text-right text-[10px] text-slate-600">
+              {idea.length > 0 && `${idea.length} / ${IDEA_MAX}`}
+            </div>
+          </div>
+
           {QUESTIONS.map((q) => {
             const selected = answers[q.id];
             return (
@@ -227,6 +294,61 @@ export default function StarterQuestionnaire({
               </fieldset>
             );
           })}
+
+          {/* Free-text: commands the user already has in mind. Optional. */}
+          <div>
+            <label
+              htmlFor="starter-commands"
+              className="text-sm font-medium text-slate-200 mb-1 block"
+            >
+              Commands (if any)
+            </label>
+            <p className="text-xs text-slate-500 mb-2">
+              Any commands you already know you want? E.g. <code className="text-slate-400">/shop open</code>,{' '}
+              <code className="text-slate-400">/balance</code>. Leave blank
+              if you'd rather figure them out with the assistant.
+            </p>
+            <textarea
+              id="starter-commands"
+              value={commands}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v.length <= COMMANDS_MAX) setCommands(v);
+              }}
+              disabled={disabled}
+              rows={2}
+              placeholder="/shop open, /shop sell, /balance"
+              className="w-full resize-none rounded-lg bg-slate-900/80 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            />
+            <div className="mt-1 text-right text-[10px] text-slate-600">
+              {commands.length > 0 && `${commands.length} / ${COMMANDS_MAX}`}
+            </div>
+          </div>
+
+          {/* Permissions are always included — not a question. */}
+          <div className="flex items-start gap-2 rounded-lg bg-slate-900/40 border border-slate-700/60 px-3 py-2">
+            <svg
+              className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p className="text-xs text-slate-400">
+              <span className="text-slate-200 font-medium">
+                Permissions are always included.
+              </span>{' '}
+              Every plugin we generate ships with proper permission nodes
+              for each command and sensitive feature, documented in{' '}
+              <code className="text-slate-300">plugin.yml</code>.
+            </p>
+          </div>
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-3 pt-4 border-t border-slate-700/60">
@@ -244,7 +366,7 @@ export default function StarterQuestionnaire({
             disabled={disabled}
             className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
           >
-            {answeredCount === 0 ? 'Start chatting' : 'Start building'}
+            {hasAnyInput ? 'Start building' : 'Start chatting'}
           </button>
         </div>
       </div>

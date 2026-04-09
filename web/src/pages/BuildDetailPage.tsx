@@ -149,9 +149,23 @@ export default function BuildDetailPage() {
       <div className="flex-1 min-h-0 flex flex-col">
         {/* CHATTING state: Chat interface */}
         {showChat && (
-          <div className="flex-1 min-h-0 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4" aria-live="polite" aria-relevant="additions">
+          <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            {/*
+             * Messages scroll region.
+             *
+             * We use an explicit viewport-relative max-height instead of
+             * `flex-1 min-h-0` because DashboardLayout's inner wrapper
+             * isn't a flex column with a bounded height — so `flex-1`
+             * would grow to content size and push the outer <main> to
+             * scroll, which is what "chat expands all the way down"
+             * looked like. Capping here forces the chat area itself to
+             * be the scroll container.
+             */}
+            <div
+              className="overflow-y-auto p-4 space-y-4 min-h-[20rem] max-h-[calc(100vh-22rem)]"
+              aria-live="polite"
+              aria-relevant="additions"
+            >
               {(!messages || messages.length === 0) &&
                 !sendMessage.isPending &&
                 (isChatting && !questionnaireSkipped ? (
