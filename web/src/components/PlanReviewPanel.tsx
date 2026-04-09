@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useApprovePlan, useRevisePlan } from '@/hooks/useBuilds';
 import type { PlanDocument } from '@/types';
 import type { AxiosError } from 'axios';
+import { classifyComplexity } from '@/utils/complexity';
 
 interface PlanReviewPanelProps {
   plan: PlanDocument;
@@ -77,17 +78,17 @@ export default function PlanReviewPanel({
         <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
           <span>~{plan.estimatedLoc} lines of code</span>
           <span>Version {plan.version}</span>
-          <span
-            className={`px-2 py-0.5 rounded-full font-medium ${
-              plan.complexityScore <= 3
-                ? 'bg-green-500/15 text-green-400'
-                : plan.complexityScore <= 6
-                  ? 'bg-amber-500/15 text-amber-400'
-                  : 'bg-red-500/15 text-red-400'
-            }`}
-          >
-            Complexity: {plan.complexityScore}/10
-          </span>
+          {(() => {
+            const info = classifyComplexity(plan.complexityScore);
+            return (
+              <span
+                className={`px-2 py-0.5 rounded-full font-medium ${info.classes}`}
+                title={`${info.description} (raw score: ${plan.complexityScore})`}
+              >
+                {info.label}
+              </span>
+            );
+          })()}
         </div>
       </div>
 

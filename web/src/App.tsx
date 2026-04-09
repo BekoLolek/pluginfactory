@@ -2,8 +2,11 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import NotificationToast from '@/components/NotificationToast';
+import ServiceUnavailablePage from '@/components/ServiceUnavailablePage';
+import { useServiceStatusStore } from '@/stores/serviceStatusStore';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardLayout from '@/layouts/DashboardLayout';
+import LandingPage from '@/pages/LandingPage';
 import LoginPage from '@/pages/LoginPage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import DashboardPage from '@/pages/DashboardPage';
@@ -30,13 +33,27 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Renders the outage overlay when the axios interceptor has flipped the
+ * global service-status flag. Must live inside {@link QueryClientProvider}
+ * because the overlay's "Try again" button invalidates React Query
+ * caches via {@code useQueryClient()}.
+ */
+function ServiceUnavailableGate() {
+  const isUnavailable = useServiceStatusStore((s) => s.isUnavailable);
+  if (!isUnavailable) return null;
+  return <ServiceUnavailablePage />;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <ServiceUnavailableGate />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<LoginPage />} />
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
             <Route

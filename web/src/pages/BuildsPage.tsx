@@ -4,6 +4,7 @@ import { useBuilds } from '@/hooks/useBuilds';
 import BuildStatusBadge from '@/components/BuildStatusBadge';
 import LoadingSkeleton from '@/components/LoadingSkeleton';
 import EmptyState from '@/components/EmptyState';
+import { classifyComplexity } from '@/utils/complexity';
 
 const PAGE_SIZE = 10;
 
@@ -77,11 +78,17 @@ export default function BuildsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  {build.complexityScore !== null && (
-                    <span className="text-xs text-slate-500">
-                      Complexity: {build.complexityScore}
-                    </span>
-                  )}
+                  {build.complexityScore !== null && (() => {
+                    const info = classifyComplexity(build.complexityScore);
+                    return (
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${info.classes}`}
+                        title={`${info.description} (raw score: ${build.complexityScore})`}
+                      >
+                        {info.label}
+                      </span>
+                    );
+                  })()}
                   <span className="text-xs text-slate-500">
                     {build.currentPhase}
                   </span>

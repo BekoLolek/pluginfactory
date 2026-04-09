@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { AuthResponse } from '@/types';
+import { useServiceStatusStore } from '@/stores/serviceStatusStore';
 
 const baseURL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:8080');
 
@@ -50,9 +51,29 @@ client.interceptors.request.use((config) => {
 });
 
 client.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Any successful response proves the backend is reachable — clear
+    // the global outage flag so the overlay dismisses itself once the
+    // service recovers (e.g. after the user hits "Try again").
+    if (useServiceStatusStore.getState().isUnavailable) {
+      useServiceStatusStore.getState().setUnavailable(false);
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
+
+    // Detect "the backend is unreachable or gateway is down" conditions
+    // and flip the global outage flag. We deliberately exclude 500 —
+    // that's often a per-endpoint bug and shouldn't take down the whole
+    // app. Network errors (no response at all) and 502/503/504 mean the
+    // service itself is the problem.
+    const status = error.response?.status;
+    const isNetworkError = !error.response;
+    const isGatewayError = status === 502 || status === 503 || status === 504;
+    if (isNetworkError || isGatewayError) {
+      useServiceStatusStore.getState().setUnavailable(true);
+    }
 
     if (error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);
