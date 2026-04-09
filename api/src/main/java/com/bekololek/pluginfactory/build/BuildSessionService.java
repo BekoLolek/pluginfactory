@@ -105,16 +105,48 @@ public class BuildSessionService {
     @Transactional
     public BuildSession cancelSession(UUID sessionId, UUID userId) {
         BuildSession session = getSession(sessionId, userId);
+        BuildStatus previousStatus = session.getStatus();
         session.setStatus(BuildStatus.CANCELLED);
         session.setCompletedAt(Instant.now());
-        return buildSessionRepository.save(session);
+        BuildSession saved = buildSessionRepository.save(session);
+        refundIfFirstNonSuccessTerminal(session.getUserId(), previousStatus, BuildStatus.CANCELLED);
+        return saved;
     }
 
     @Transactional
     public BuildSession updateStatus(UUID sessionId, BuildStatus status) {
         BuildSession session = getSessionById(sessionId);
+        BuildStatus previousStatus = session.getStatus();
         session.setStatus(status);
-        return buildSessionRepository.save(session);
+        BuildSession saved = buildSessionRepository.save(session);
+        refundIfFirstNonSuccessTerminal(session.getUserId(), previousStatus, status);
+        return saved;
+    }
+
+    /**
+     * Build slots are consumed at session creation, but a build that never
+     * produces a successful artifact shouldn't count against the user's
+     * monthly quota — that just punishes people for our flakiness. Refund
+     * the slot the first time a session enters FAILED or CANCELLED, and
+     * never on a re-entry (e.g. FAILED → CANCELLED) so a single session
+     * can't refund itself twice. Tokens already burned are still charged
+     * via the TokenBudget ledger.
+     */
+    private void refundIfFirstNonSuccessTerminal(UUID userId, BuildStatus previousStatus, BuildStatus newStatus) {
+        if (!isNonSuccessTerminal(newStatus) || isTerminal(previousStatus)) {
+            return;
+        }
+        subscriptionService.refundBuildSlot(userId);
+    }
+
+    private boolean isNonSuccessTerminal(BuildStatus status) {
+        return status == BuildStatus.FAILED || status == BuildStatus.CANCELLED;
+    }
+
+    private boolean isTerminal(BuildStatus status) {
+        return status == BuildStatus.COMPLETED
+                || status == BuildStatus.FAILED
+                || status == BuildStatus.CANCELLED;
     }
 
     @Transactional

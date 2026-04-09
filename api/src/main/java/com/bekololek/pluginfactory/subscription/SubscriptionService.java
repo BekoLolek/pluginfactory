@@ -61,6 +61,29 @@ public class SubscriptionService {
         subscriptionRepository.save(subscription);
     }
 
+    /**
+     * Refunds a single build slot to the user's monthly quota. Called when a
+     * build session terminates without producing a successful artifact
+     * (FAILED or CANCELLED). Only the slot counter is refunded — tokens
+     * already consumed are still charged via the TokenBudget ledger, so
+     * users can't bypass real compute costs by farming failures, but they
+     * also aren't punished for our flakiness or for cancelling a build they
+     * no longer want. Idempotent: clamps at 0 so a double-refund (e.g.
+     * FAILED → CANCELLED transition slipping through) can never give the
+     * user free quota.
+     */
+    @Transactional
+    public void refundBuildSlot(UUID userId) {
+        Subscription subscription = getCurrentSubscription(userId);
+        int current = subscription.getBuildsUsedThisPeriod();
+        if (current <= 0) {
+            return;
+        }
+        subscription.setBuildsUsedThisPeriod(current - 1);
+        subscriptionRepository.save(subscription);
+        log.info("Refunded build slot for user {} ({} → {})", userId, current, current - 1);
+    }
+
     @Transactional
     public void recordTokenUsage(UUID userId, int tokens) {
         if (tokens <= 0) {

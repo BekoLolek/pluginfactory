@@ -135,5 +135,58 @@ class BuildSessionServiceTest {
 
         assertThat(result.getStatus()).isEqualTo(BuildStatus.CANCELLED);
         assertThat(result.getCompletedAt()).isNotNull();
+        verify(subscriptionService).refundBuildSlot(userId);
+    }
+
+    @Test
+    void updateStatus_failedRefundsBuildSlotOnce() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        BuildSession session = new BuildSession();
+        session.setId(sessionId);
+        session.setUserId(userId);
+        session.setStatus(BuildStatus.BUILDING);
+
+        when(buildSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(buildSessionRepository.save(any(BuildSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        buildSessionService.updateStatus(sessionId, BuildStatus.FAILED);
+
+        verify(subscriptionService).refundBuildSlot(userId);
+    }
+
+    @Test
+    void updateStatus_completedDoesNotRefundBuildSlot() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        BuildSession session = new BuildSession();
+        session.setId(sessionId);
+        session.setUserId(userId);
+        session.setStatus(BuildStatus.BUILDING);
+
+        when(buildSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(buildSessionRepository.save(any(BuildSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        buildSessionService.updateStatus(sessionId, BuildStatus.COMPLETED);
+
+        verify(subscriptionService, never()).refundBuildSlot(any());
+    }
+
+    @Test
+    void updateStatus_failedToCancelledDoesNotDoubleRefund() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        BuildSession session = new BuildSession();
+        session.setId(sessionId);
+        session.setUserId(userId);
+        // Already terminal — a second transition must not refund again.
+        session.setStatus(BuildStatus.FAILED);
+
+        when(buildSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(buildSessionRepository.save(any(BuildSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        buildSessionService.updateStatus(sessionId, BuildStatus.CANCELLED);
+
+        verify(subscriptionService, never()).refundBuildSlot(any());
     }
 }

@@ -98,6 +98,39 @@ class SubscriptionServiceTest {
     }
 
     @Test
+    void refundBuildSlot_decrementsCounter() {
+        UUID userId = UUID.randomUUID();
+        Subscription subscription = new Subscription();
+        subscription.setUserId(userId);
+        subscription.setTier(Tier.BASIC);
+        subscription.setBuildsUsedThisPeriod(3);
+
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(subscription));
+
+        subscriptionService.refundBuildSlot(userId);
+
+        assertThat(subscription.getBuildsUsedThisPeriod()).isEqualTo(2);
+        verify(subscriptionRepository).save(subscription);
+    }
+
+    @Test
+    void refundBuildSlot_clampsAtZero() {
+        UUID userId = UUID.randomUUID();
+        Subscription subscription = new Subscription();
+        subscription.setUserId(userId);
+        subscription.setTier(Tier.FREE);
+        subscription.setBuildsUsedThisPeriod(0);
+
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(subscription));
+
+        subscriptionService.refundBuildSlot(userId);
+
+        // No-op refund — counter cannot go negative and we don't waste a save call.
+        assertThat(subscription.getBuildsUsedThisPeriod()).isEqualTo(0);
+        verify(subscriptionRepository, org.mockito.Mockito.never()).save(subscription);
+    }
+
+    @Test
     void getTierForUser_success() {
         UUID userId = UUID.randomUUID();
         Subscription subscription = new Subscription();

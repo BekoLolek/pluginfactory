@@ -1022,6 +1022,10 @@ Two complementary mechanisms guarantee that sessions never get permanently stuck
 
 Both paths share a single `recoverSession(session, now, reason)` helper so the recovery logic --- update status, append a chat message, release containers --- is identical regardless of trigger.
 
+**19.5.3 Build Slot Refunds**
+
+A user's monthly build quota (`Tier.maxBuilds`) is consumed at session creation time, but only successful builds actually cost a slot. The first time a session transitions into `FAILED` or `CANCELLED`, `BuildSessionService` calls `SubscriptionService.refundBuildSlot(userId)`, which decrements `Subscription.buildsUsedThisPeriod` (clamped at 0). The refund is gated on the previous status — if the session was already terminal (`COMPLETED`/`FAILED`/`CANCELLED`), no refund fires, so a `FAILED → CANCELLED` re-entry can never refund twice. Tokens already consumed during the failed run are *not* refunded — they remain charged via the `TokenBudget` ledger so users can't farm failures to bypass real Anthropic compute costs, but they also aren't punished with a wasted slot for our flakiness or for cancelling a build they no longer want.
+
 **19.6 Artifact, Source Bundle & Marketplace Listing**
 
 Artifact represents a compiled JAR file with its metadata: file hash (SHA-256 for integrity verification), file size, plugin.yml contents, and security scan results. Artifacts are stored in S3-compatible object storage with the file path recorded in the database.
