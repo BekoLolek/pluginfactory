@@ -69,14 +69,20 @@ jobs:
           SSH_CMD="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
 
           # Pin the remote checkout to the exact commit that passed CI so a
-          # racing push doesn't sneak untested code onto the VM.
+          # racing push doesn't sneak untested code onto the VM. The explicit
+          # nginx restart at the end is required because docker compose only
+          # recreates containers whose image or env changed; nginx uses an
+          # unchanged upstream image with the config file mounted via volume,
+          # so config-only changes would otherwise sit on disk without ever
+          # being picked up by the running container.
           $SSH_CMD "$DEPLOY_HOST" "
             set -e
             cd /opt/pluginfactory &&
             git fetch origin main &&
             git checkout $DEPLOY_SHA &&
             docker compose build --no-cache &&
-            docker compose up -d --remove-orphans
+            docker compose up -d --remove-orphans &&
+            docker compose restart nginx
           "
 
       - name: Verify deployment health
