@@ -8,19 +8,24 @@ export default function AuthCallbackPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
-  const [error, setError] = useState<string | null>(null);
+  const [asyncError, setAsyncError] = useState<string | null>(null);
+
+  const code = searchParams.get('code');
+  const state = searchParams.get('state');
+
+  // Derive validation errors during render — they're pure functions of the
+  // URL params, so there's no need for an effect (which would also trip the
+  // react-hooks/set-state-in-effect lint rule).
+  const validationError = !code
+    ? 'No authorization code received from Discord.'
+    : !state
+      ? 'Missing state parameter. Please try logging in again.'
+      : null;
+
+  const error = validationError ?? asyncError;
 
   useEffect(() => {
-    const code = searchParams.get('code');
-    const state = searchParams.get('state');
-
-    if (!code) {
-      setError('No authorization code received from Discord.');
-      return;
-    }
-
-    if (!state) {
-      setError('Missing state parameter. Please try logging in again.');
+    if (!code || !state) {
       return;
     }
 
@@ -35,7 +40,9 @@ export default function AuthCallbackPage() {
         }
       } catch {
         if (!cancelled) {
-          setError('Authentication failed. Please try again.');
+          // setState inside an awaited callback is allowed by the rule:
+          // we're reacting to an external system (the auth API) completing.
+          setAsyncError('Authentication failed. Please try again.');
         }
       }
     }
@@ -45,7 +52,7 @@ export default function AuthCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams, login, navigate]);
+  }, [code, state, login, navigate]);
 
   if (error) {
     return (
