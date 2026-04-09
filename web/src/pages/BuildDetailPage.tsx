@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   useBuild,
@@ -15,6 +15,8 @@ import BuildStatusBadge from '@/components/BuildStatusBadge';
 import PlanReviewPanel from '@/components/PlanReviewPanel';
 import BuildProgressPanel from '@/components/BuildProgressPanel';
 import LoadingSkeleton from '@/components/LoadingSkeleton';
+import TypingIndicator from '@/components/TypingIndicator';
+import StarterQuestionnaire from '@/components/StarterQuestionnaire';
 
 export default function BuildDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -29,11 +31,19 @@ export default function BuildDetailPage() {
   // Poll build during active build/test phases
   useBuildPolling(sessionId);
 
-  // Auto-scroll chat to bottom
+  // Auto-scroll chat to bottom on new messages or while the assistant is
+  // thinking (so the typing indicator is always visible).
   const chatEndRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, sendMessage.isPending]);
+
+  // The starter questionnaire shows on a fresh session until the user
+  // either answers it, sends their first message, or explicitly skips it.
+  // Skip state is local-only — it resets on page reload, which is fine
+  // because once there's a real message in the chat the questionnaire
+  // won't reappear anyway.
+  const [questionnaireSkipped, setQuestionnaireSkipped] = useState(false);
 
   if (isLoading) {
     return (
@@ -142,33 +152,44 @@ export default function BuildDetailPage() {
           <div className="flex-1 min-h-0 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4" aria-live="polite" aria-relevant="additions">
-              {(!messages || messages.length === 0) && (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center mx-auto mb-3">
-                      <svg
-                        className="w-6 h-6 text-blue-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                        />
-                      </svg>
-                    </div>
-                    <p className="text-slate-400 text-sm">
-                      Describe your Minecraft plugin idea to get started.
-                    </p>
+              {(!messages || messages.length === 0) &&
+                !sendMessage.isPending &&
+                (isChatting && !questionnaireSkipped ? (
+                  <div className="flex items-center justify-center min-h-full py-6">
+                    <StarterQuestionnaire
+                      onSubmit={handleSend}
+                      onSkip={() => setQuestionnaireSkipped(true)}
+                      disabled={sendMessage.isPending}
+                    />
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center mx-auto mb-3">
+                        <svg
+                          className="w-6 h-6 text-blue-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-slate-400 text-sm">
+                        Describe your Minecraft plugin idea to get started.
+                      </p>
+                    </div>
+                  </div>
+                ))}
               {messages?.map((msg) => (
                 <ChatMessage key={msg.id} message={msg} />
               ))}
+              {sendMessage.isPending && <TypingIndicator />}
               <div ref={chatEndRef} />
             </div>
 

@@ -16,7 +16,7 @@ import {
   requestIteration,
   getArtifacts,
 } from '@/api/builds';
-import type { BuildSession } from '@/types';
+import type { BuildSession, ChatMessage } from '@/types';
 
 export function useCreateBuild() {
   const queryClient = useQueryClient();
@@ -61,9 +61,48 @@ export function useMessages(sessionId: string) {
 
 export function useSendMessage(sessionId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutation<
+    ChatMessage,
+    Error,
+    string,
+    { previous: ChatMessage[] | undefined }
+  >({
     mutationFn: (content: string) => sendMessage(sessionId, content),
-    onSuccess: () => {
+    // Optimistically append the user's message to the cached list so it
+    // appears instantly in the UI. The refetch in onSettled will replace
+    // this placeholder with the server-of-truth messages (which include
+    // the assistant's reply) once the request completes.
+    onMutate: async (content) => {
+      await queryClient.cancelQueries({
+        queryKey: ['messages', sessionId],
+      });
+      const previous = queryClient.getQueryData<ChatMessage[]>([
+        'messages',
+        sessionId,
+      ]);
+      const optimistic: ChatMessage = {
+        id: `optimistic-${Date.now()}`,
+        role: 'user',
+        content,
+        modelUsed: null,
+        tokensConsumed: 0,
+        createdAt: new Date().toISOString(),
+      };
+      queryClient.setQueryData<ChatMessage[]>(
+        ['messages', sessionId],
+        (old) => [...(old ?? []), optimistic],
+      );
+      return { previous };
+    },
+    onError: (_err, _content, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(
+          ['messages', sessionId],
+          context.previous,
+        );
+      }
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({
         queryKey: ['messages', sessionId],
       });
