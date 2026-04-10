@@ -176,7 +176,7 @@ public class BuildPipelineService {
         containerSession.setIterationId(iterationId);
         containerSession.setContainerId(containerId);
         containerSession.setContainerType("BUILD");
-        containerSession.setMemoryMb(512);
+        containerSession.setMemoryMb(3072);
         containerSession.setCpuMillicores(1000);
         containerSessionRepository.save(containerSession);
 
@@ -185,9 +185,9 @@ public class BuildPipelineService {
             byte[] tarArchive = createTarArchive(files);
             dockerService.copyToContainer(containerId, tarArchive, "/plugin-workspace");
 
-            // Run Maven build
+            // Run Maven build — cap JVM heap to leave room for OS/native overhead
             ExecResult buildResult = dockerService.executeCommand(containerId,
-                    "sh", "-c", "cd /plugin-workspace && mvn clean package -q -DskipTests");
+                    "sh", "-c", "cd /plugin-workspace && MAVEN_OPTS='-Xmx1536m -Xms256m' mvn clean package -q -DskipTests");
 
             if (buildResult.exitCode() != 0) {
                 throw new CompilationException(

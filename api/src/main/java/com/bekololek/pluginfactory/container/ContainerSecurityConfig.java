@@ -10,7 +10,7 @@ public class ContainerSecurityConfig {
 
     public HostConfig getSecurityConstraints(DockerService.ContainerType type) {
         long memoryBytes = type == DockerService.ContainerType.BUILD
-                ? 2L * 1024 * 1024 * 1024 : 4L * 1024 * 1024 * 1024;
+                ? 3L * 1024 * 1024 * 1024 : 4L * 1024 * 1024 * 1024;
 
         return HostConfig.newHostConfig()
                 .withMemory(memoryBytes)

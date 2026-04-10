@@ -6,11 +6,20 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 @Slf4j
 public class PromptSanitizer {
+
+    /**
+     * Matches internal control markers like [TRANSITION:PLAN_GENERATION].
+     * These are stripped silently from user input before any other checks
+     * so a malicious user cannot force-trigger phase transitions.
+     */
+    private static final Pattern TRANSITION_MARKER_PATTERN =
+            Pattern.compile("\\[TRANSITION:[A-Z_]+\\]", Pattern.CASE_INSENSITIVE);
 
     private static final List<Pattern> INJECTION_PATTERNS = List.of(
             Pattern.compile("ignore previous instructions", Pattern.CASE_INSENSITIVE),
@@ -41,6 +50,15 @@ public class PromptSanitizer {
         }
 
         String cleaned = userMessage;
+
+        // Strip internal control markers (e.g. [TRANSITION:PLAN_GENERATION])
+        // before any other processing. This prevents users from injecting
+        // markers that the AI's response parser would act on.
+        Matcher markerMatcher = TRANSITION_MARKER_PATTERN.matcher(cleaned);
+        if (markerMatcher.find()) {
+            log.warn("Stripped transition marker(s) from user input");
+            cleaned = markerMatcher.replaceAll("").trim();
+        }
 
         // Check injection patterns
         for (Pattern pattern : INJECTION_PATTERNS) {

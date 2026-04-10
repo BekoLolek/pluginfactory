@@ -23,12 +23,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
 public class ChatbotAgent {
 
     private static final String TRANSITION_MARKER = "[TRANSITION:PLAN_GENERATION]";
+
+    /**
+     * Matches fenced code blocks (```...```) that the AI may produce despite
+     * being told not to. During the clarification phase the user should never
+     * see raw code — it will be generated properly in the implementation phase.
+     */
+    private static final Pattern CODE_BLOCK_PATTERN =
+            Pattern.compile("```[\\s\\S]*?```");
 
     private final AnthropicClient anthropicClient;
     private final ChatMessageService chatMessageService;
@@ -121,6 +130,12 @@ public class ChatbotAgent {
             phaseTransition = "PLAN_GENERATION";
         }
 
+        // 9b. During clarification, strip any code blocks the AI produced
+        //     despite being told not to. This is a server-side safety net.
+        if (session.getCurrentPhase() == BuildPhase.CLARIFICATION) {
+            content = stripCodeBlocks(content);
+        }
+
         // 10. Store both user message and assistant response (cleaned)
         int totalTokens = response.inputTokens() + response.outputTokens();
         chatMessageService.addMessage(sessionId, "user", cleanMessage, null, 0);
@@ -176,6 +191,24 @@ public class ChatbotAgent {
             case SECURITY_SCAN, INTEGRATION_TEST -> "testing";
             default -> "planning";
         };
+    }
+
+    /**
+     * Strips markdown fenced code blocks from AI responses. During the
+     * clarification phase the AI should only discuss requirements, not
+     * produce code. If it does anyway, we remove the blocks and leave a
+     * short note so the conversation still makes sense.
+     */
+    private String stripCodeBlocks(String content) {
+        if (!CODE_BLOCK_PATTERN.matcher(content).find()) {
+            return content;
+        }
+        log.warn("Stripped code block(s) from AI response during clarification phase");
+        String stripped = CODE_BLOCK_PATTERN.matcher(content).replaceAll(
+                "(Code will be generated automatically during the implementation phase.)");
+        // Collapse any double-blank-lines left behind
+        stripped = stripped.replaceAll("\\n{3,}", "\n\n").trim();
+        return stripped;
     }
 
     private String resolveSystemPrompt(BuildSession session, int remainingTokens) {
