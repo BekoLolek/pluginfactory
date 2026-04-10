@@ -135,6 +135,15 @@ export function usePlan(sessionId: string) {
     queryKey: ['plan', sessionId],
     queryFn: () => getPlan(sessionId),
     enabled,
+    // Plan may not exist yet when the session first enters PLANNING
+    // (PlanGenerationAgent is still running). Treat 404 as "not ready"
+    // rather than an error so React Query retries silently.
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 404) return failureCount < 5;
+      return failureCount < 2;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 }
 

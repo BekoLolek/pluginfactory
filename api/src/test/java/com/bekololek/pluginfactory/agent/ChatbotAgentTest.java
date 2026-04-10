@@ -163,7 +163,11 @@ class ChatbotAgentTest {
         assertTrue(response.content().contains("Great, I have enough info to create a plan."));
         assertTrue(response.content().contains("Plan generated: TeleportPlugin"));
         assertEquals("PLAN_GENERATION", response.phaseTransition());
-        verify(buildSessionService).updateStatus(sessionId, BuildStatus.PLANNING);
+        // ChatbotAgent must NOT set PLANNING early — PlanGenerationAgent
+        // handles that after the plan row is persisted. Setting it early
+        // caused a race where the frontend would poll, see PLANNING, fire
+        // GET /plan, and get 404.
+        verify(buildSessionService, never()).updateStatus(sessionId, BuildStatus.PLANNING);
         verify(planGenerationAgent).generatePlan(sessionId);
 
         // Regression: the stored assistant message must NOT contain the
@@ -211,9 +215,9 @@ class ChatbotAgentTest {
         // Marker stripped from content
         assertTrue(!response.content().contains("[TRANSITION:PLAN_GENERATION]"));
 
-        // Status rolled back to CHATTING (first call was PLANNING, second is CHATTING)
-        verify(buildSessionService, times(1)).updateStatus(sessionId, BuildStatus.PLANNING);
-        verify(buildSessionService, times(1)).updateStatus(sessionId, BuildStatus.CHATTING);
+        // Status explicitly reset to CHATTING (PlanGenerationAgent may have
+        // partially updated it before throwing)
+        verify(buildSessionService).updateStatus(sessionId, BuildStatus.CHATTING);
         // Phase explicitly reset
         verify(buildSessionService).updatePhase(sessionId, BuildPhase.CLARIFICATION);
     }

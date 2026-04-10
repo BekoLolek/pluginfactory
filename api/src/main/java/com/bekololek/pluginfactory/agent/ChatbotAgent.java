@@ -130,17 +130,22 @@ public class ChatbotAgent {
         String tokenPhase = mapPhaseToTokenPhase(session.getCurrentPhase());
         tokenBudgetService.consumeTokens(sessionId, tokenPhase, totalTokens);
 
-        // 12. If the AI signaled readiness, trigger plan generation
+        // 12. If the AI signaled readiness, trigger plan generation.
+        //     We do NOT set status = PLANNING here — PlanGenerationAgent
+        //     sets both status (PLANNING) and phase (PLAN_REVIEW) AFTER the
+        //     plan is persisted. Setting it early caused a race: the
+        //     frontend would poll, see PLANNING, fire GET /plan, and get a
+        //     404 because the plan row didn't exist yet.
         if (phaseTransition != null) {
-            buildSessionService.updateStatus(sessionId, BuildStatus.PLANNING);
             try {
                 PlanDocument plan = planGenerationAgent.generatePlan(sessionId);
                 content += "\n\nPlan generated: " + plan.getPluginName();
             } catch (Exception e) {
                 log.error("Plan generation failed for session {}", sessionId, e);
                 content += "\n\nPlan generation encountered an issue. Please try revising.";
-                // Roll status back to CHATTING so the user can keep
-                // refining their idea and the UI doesn't get stuck.
+                // Ensure we stay in CHATTING / CLARIFICATION so the user
+                // can keep refining. PlanGenerationAgent may have partially
+                // updated status before throwing, so reset explicitly.
                 buildSessionService.updateStatus(sessionId, BuildStatus.CHATTING);
                 buildSessionService.updatePhase(sessionId, BuildPhase.CLARIFICATION);
                 phaseTransition = null;
