@@ -114,10 +114,17 @@ export default function StatusPage() {
     setChecking(false);
   }, []);
 
+  // Run the initial check on mount, then poll every 60 s.
+  // The interval callback is fine (not synchronous in the effect body),
+  // and the initial check is scheduled via setTimeout(…, 0) to avoid
+  // the synchronous-setState-in-effect lint error.
   useEffect(() => {
-    runChecks();
-    const interval = setInterval(runChecks, 60_000); // re-check every 60 s
-    return () => clearInterval(interval);
+    const initial = setTimeout(runChecks, 0);
+    const interval = setInterval(runChecks, 60_000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
   }, [runChecks]);
 
   const overallStatus: 'operational' | 'degraded' | 'down' | 'checking' =
