@@ -20,3 +20,8 @@ WORKDIR /plugin-workspace
 RUN chown builder:builder /plugin-workspace
 USER builder
 VOLUME /plugin-workspace
+
+# Keep the container alive so docker exec can run Maven builds inside it.
+# Without this, the base image's CMD (jshell) exits immediately on EOF,
+# stopping the container and SIGKILLing any exec'd processes (exit 137).
+CMD ["tail", "-f", "/dev/null"]

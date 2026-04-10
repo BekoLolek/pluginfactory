@@ -14,3 +14,5 @@ WORKDIR /server
 RUN echo "eula=true" > eula.txt && chown -R tester:tester /server
 USER tester
 VOLUME /server/plugins
+
+CMD ["tail", "-f", "/dev/null"]
