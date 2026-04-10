@@ -165,6 +165,57 @@ class ChatbotAgentTest {
         assertEquals("PLAN_GENERATION", response.phaseTransition());
         verify(buildSessionService).updateStatus(sessionId, BuildStatus.PLANNING);
         verify(planGenerationAgent).generatePlan(sessionId);
+
+        // Regression: the stored assistant message must NOT contain the
+        // raw transition marker — it should have been stripped before storage.
+        verify(chatMessageService).addMessage(
+                eq(sessionId), eq("assistant"),
+                org.mockito.ArgumentMatchers.argThat(
+                        stored -> !stored.contains("[TRANSITION:PLAN_GENERATION]")
+                                && stored.contains("Great, I have enough info")),
+                eq("claude-haiku-4-5"), eq(280));
+    }
+
+    @Test
+    void handleMessagePlanGenerationFailureRollsBackPhase() {
+        // When the AI emits the transition marker but plan generation
+        // throws, the session must NOT be left stuck in PLANNING /
+        // CLARIFICATION. Both should roll back to CHATTING / CLARIFICATION
+        // and the phaseTransition in the response should be null so the
+        // frontend doesn't show a stale "generating plan" state.
+        String userMessage = "I've told you everything";
+        BuildSession session = createSession(BuildStatus.CHATTING, BuildPhase.CLARIFICATION);
+        TokenBudget budget = createBudget(100000, 5000);
+
+        when(promptSanitizer.sanitize(userMessage))
+                .thenReturn(new PromptSanitizer.SanitizationResult(userMessage, Collections.emptyList()));
+        when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
+        when(tokenBudgetService.getRemainingBudget(sessionId)).thenReturn(budget);
+        when(tokenBudgetService.hasBudget(sessionId, 100)).thenReturn(true);
+        when(modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION)).thenReturn("claude-haiku-4-5");
+        when(modelRouter.getMaxTokens(ModelRouter.TaskType.CLARIFICATION)).thenReturn(2048);
+        when(chatMessageService.getMessages(sessionId)).thenReturn(Collections.emptyList());
+        when(anthropicClient.sendMessage(anyString(), anyString(), anyList(), anyInt()))
+                .thenReturn(new AnthropicResponse(
+                        "Let me generate a plan now. [TRANSITION:PLAN_GENERATION]",
+                        "claude-haiku-4-5", 180, 60));
+        when(planGenerationAgent.generatePlan(sessionId))
+                .thenThrow(new RuntimeException("AI returned invalid JSON"));
+
+        // Act
+        AgentResponse response = chatbotAgent.handleMessage(sessionId, userId, userMessage);
+
+        // Assert: transition cleared, error message appended
+        assertNull(response.phaseTransition());
+        assertTrue(response.content().contains("Plan generation encountered an issue"));
+        // Marker stripped from content
+        assertTrue(!response.content().contains("[TRANSITION:PLAN_GENERATION]"));
+
+        // Status rolled back to CHATTING (first call was PLANNING, second is CHATTING)
+        verify(buildSessionService, times(1)).updateStatus(sessionId, BuildStatus.PLANNING);
+        verify(buildSessionService, times(1)).updateStatus(sessionId, BuildStatus.CHATTING);
+        // Phase explicitly reset
+        verify(buildSessionService).updatePhase(sessionId, BuildPhase.CLARIFICATION);
     }
 
     @Test
