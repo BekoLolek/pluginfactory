@@ -4,12 +4,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     maven gradle git curl && \
     rm -rf /var/lib/apt/lists/*
 
+RUN useradd -r -m builder
+
 WORKDIR /tmp/warmup
 COPY warmup-pom.xml pom.xml
+# Resolve deps as the builder user so they're cached in /home/builder/.m2/
+RUN chown -R builder:builder /tmp/warmup
+USER builder
 RUN mvn dependency:resolve -q || true
+
+USER root
 RUN rm -rf /tmp/warmup
 
-RUN useradd -r -m builder
 WORKDIR /plugin-workspace
 RUN chown builder:builder /plugin-workspace
 USER builder
