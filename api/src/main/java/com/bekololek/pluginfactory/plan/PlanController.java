@@ -129,11 +129,15 @@ public class PlanController {
 
     private <T> T parseJson(String json, TypeReference<T> typeRef) {
         try {
-            return objectMapper.readValue(json, typeRef);
-        } catch (Exception e) {
-            @SuppressWarnings("unchecked")
-            T empty = (T) Collections.emptyList();
-            return empty;
+            T result = objectMapper.readValue(json, typeRef);
+            if (result != null) {
+                return result;
+            }
+        } catch (Exception ignored) {
+            // fall through to empty list
         }
+        @SuppressWarnings("unchecked")
+        T empty = (T) Collections.emptyList();
+        return empty;
     }
 }

@@ -93,7 +93,7 @@ export default function PlanReviewPanel({
       </div>
 
       {/* Commands */}
-      {plan.commands.length > 0 && (
+      {plan.commands?.length > 0 && (
         <div className="border-b border-slate-800 px-6 py-4">
           <h4 className="text-sm font-medium text-white mb-3">Commands</h4>
           <div className="overflow-x-auto">
@@ -137,7 +137,7 @@ export default function PlanReviewPanel({
       )}
 
       {/* Event Listeners */}
-      {plan.eventListeners.length > 0 && (
+      {plan.eventListeners?.length > 0 && (
         <div className="border-b border-slate-800 px-6 py-4">
           <h4 className="text-sm font-medium text-white mb-3">
             Event Listeners
@@ -155,7 +155,7 @@ export default function PlanReviewPanel({
                   <p className="text-sm text-slate-300">
                     {listener.description}
                   </p>
-                  {listener.conditions.length > 0 && (
+                  {listener.conditions?.length > 0 && (
                     <p className="text-xs text-slate-500 mt-1">
                       Conditions: {listener.conditions.join(', ')}
                     </p>
@@ -171,7 +171,7 @@ export default function PlanReviewPanel({
       )}
 
       {/* Config Options */}
-      {plan.configSchema.length > 0 && (
+      {plan.configSchema?.length > 0 && (
         <div className="border-b border-slate-800 px-6 py-4">
           <h4 className="text-sm font-medium text-white mb-3">
             Configuration
@@ -211,7 +211,7 @@ export default function PlanReviewPanel({
       )}
 
       {/* Dependencies */}
-      {plan.dependencies.length > 0 && (
+      {plan.dependencies?.length > 0 && (
         <div className="border-b border-slate-800 px-6 py-4">
           <h4 className="text-sm font-medium text-white mb-3">Dependencies</h4>
           <div className="space-y-2">
@@ -231,7 +231,7 @@ export default function PlanReviewPanel({
       )}
 
       {/* Test Scenarios */}
-      {plan.testScenarios.length > 0 && (
+      {plan.testScenarios?.length > 0 && (
         <div className="border-b border-slate-800 px-6 py-4">
           <h4 className="text-sm font-medium text-white mb-3">
             Test Scenarios
