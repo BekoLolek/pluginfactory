@@ -130,6 +130,26 @@
   --color-teal-950: #220d05;
 }
 
+/* === Custom scrollbars (dark warm theme) === */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3128 transparent;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3128;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #5a483b;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

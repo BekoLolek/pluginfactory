@@ -141,17 +141,16 @@ export default function BuildProgressPanel({
                     <span className="w-2 h-2 rounded-full bg-current" />
                   )}
                 </div>
-                {index < phases.length - 1 && (
-                  <div
-                    className={`w-0.5 flex-1 min-h-6 ${
-                      isDone ? 'bg-green-500/40' : 'bg-slate-800'
-                    }`}
-                  />
-                )}
+                {/* Connecting line to next step (including the Done step) */}
+                <div
+                  className={`w-0.5 flex-1 min-h-4 ${
+                    isDone ? 'bg-green-500/40' : 'bg-slate-800'
+                  }`}
+                />
               </div>
 
               {/* Label */}
-              <div className="pb-6">
+              <div className="pb-4">
                 <p
                   className={`text-sm font-medium ${
                     isFailedPhase

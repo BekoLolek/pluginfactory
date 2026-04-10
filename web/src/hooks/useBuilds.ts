@@ -2,6 +2,7 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
+  useIsMutating,
 } from '@tanstack/react-query';
 import {
   createBuild,
@@ -15,6 +16,7 @@ import {
   revisePlan,
   requestIteration,
   getArtifacts,
+  deleteBuild,
 } from '@/api/builds';
 import type { BuildSession, ChatMessage } from '@/types';
 
@@ -51,11 +53,19 @@ export function useMessages(sessionId: string) {
       )
     : false;
 
+  // Pause the 5-second refetch while a message is being sent.
+  // Without this, the interval fires mid-mutation, fetches stale
+  // server data (user message not stored yet), and clobbers the
+  // optimistic update — making the user's message disappear until
+  // the AI finishes responding.
+  const isSending =
+    useIsMutating({ mutationKey: ['sendMessage', sessionId] }) > 0;
+
   return useQuery({
     queryKey: ['messages', sessionId],
     queryFn: () => getMessages(sessionId),
     enabled: !!sessionId,
-    refetchInterval: isActive ? 5000 : false,
+    refetchInterval: isActive && !isSending ? 5000 : false,
   });
 }
 
@@ -67,6 +77,7 @@ export function useSendMessage(sessionId: string) {
     string,
     { previous: ChatMessage[] | undefined }
   >({
+    mutationKey: ['sendMessage', sessionId],
     mutationFn: (content: string) => sendMessage(sessionId, content),
     // Optimistically append the user's message to the cached list so it
     // appears instantly in the UI. The refetch in onSettled will replace
@@ -168,6 +179,16 @@ export function useRevisePlan(sessionId: string) {
       void queryClient.invalidateQueries({
         queryKey: ['messages', sessionId],
       });
+    },
+  });
+}
+
+export function useDeleteBuild() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) => deleteBuild(sessionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['builds'] });
     },
   });
 }

@@ -7,6 +7,7 @@ import {
   useTokenBudget,
   usePlan,
   useBuildPolling,
+  useIterate,
 } from '@/hooks/useBuilds';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
@@ -43,6 +44,7 @@ export default function BuildDetailPage() {
   const { data: budget } = useTokenBudget(sessionId);
   const { data: plan } = usePlan(sessionId);
   const sendMessage = useSendMessage(sessionId);
+  const iterateMutation = useIterate(sessionId);
 
   // Poll build during active build/test phases
   useBuildPolling(sessionId);
@@ -60,6 +62,8 @@ export default function BuildDetailPage() {
   // reload, which is fine because once there's a real message in the
   // chat the questionnaire won't reappear anyway.
   const [chatStarted, setChatStarted] = useState(false);
+  const [showIterate, setShowIterate] = useState(false);
+  const [iterateFeedback, setIterateFeedback] = useState('');
 
   if (isLoading) {
     return (
@@ -274,6 +278,68 @@ export default function BuildDetailPage() {
         {isCompleted && (
           <div className="flex-1">
             <BuildProgressPanel session={build} />
+
+            {/* Iteration: request modifications */}
+            <div className="mt-4 bg-slate-900 border border-slate-800 rounded-xl p-5">
+              {!showIterate ? (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-400">
+                    Want to change something?
+                  </p>
+                  <button
+                    onClick={() => setShowIterate(true)}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm font-medium text-white transition-colors"
+                  >
+                    Request Modifications
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-white">
+                    Describe the changes you want
+                  </p>
+                  <textarea
+                    value={iterateFeedback}
+                    onChange={(e) => setIterateFeedback(e.target.value)}
+                    placeholder="e.g. Add a cooldown timer, change the default config value..."
+                    rows={3}
+                    className="w-full resize-none rounded-xl bg-slate-800 border border-slate-700 px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  />
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        if (!iterateFeedback.trim()) return;
+                        iterateMutation.mutate(iterateFeedback.trim(), {
+                          onSuccess: () => {
+                            setIterateFeedback('');
+                            setShowIterate(false);
+                          },
+                        });
+                      }}
+                      disabled={
+                        iterateMutation.isPending ||
+                        !iterateFeedback.trim()
+                      }
+                      className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+                    >
+                      {iterateMutation.isPending
+                        ? 'Submitting...'
+                        : 'Submit & Rebuild'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowIterate(false);
+                        setIterateFeedback('');
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {plan && (
               <div className="mt-4">
                 <PlanReviewPanel

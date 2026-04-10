@@ -100,6 +100,10 @@ export async function requestIteration(
   return data;
 }
 
+export async function deleteBuild(sessionId: string): Promise<void> {
+  await client.delete(`/api/v1/builds/${sessionId}`);
+}
+
 export async function getArtifacts(sessionId: string): Promise<Artifact[]> {
   const { data } = await client.get<Artifact[]>(
     `/api/v1/builds/${sessionId}/artifacts`,

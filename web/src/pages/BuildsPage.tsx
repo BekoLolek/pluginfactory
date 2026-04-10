@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useBuilds } from '@/hooks/useBuilds';
+import { useBuilds, useDeleteBuild } from '@/hooks/useBuilds';
 import BuildStatusBadge from '@/components/BuildStatusBadge';
 import LoadingSkeleton from '@/components/LoadingSkeleton';
 import EmptyState from '@/components/EmptyState';
@@ -11,6 +11,7 @@ const PAGE_SIZE = 10;
 export default function BuildsPage() {
   const [page, setPage] = useState(0);
   const { data, isLoading } = useBuilds(page, PAGE_SIZE);
+  const deleteMutation = useDeleteBuild();
 
   const builds = data?.content ?? [];
   const totalPages = data?.totalPages ?? 0;
@@ -61,40 +62,77 @@ export default function BuildsPage() {
         <>
           <div className="space-y-2 mb-6">
             {builds.map((build) => (
-              <Link
+              <div
                 key={build.id}
-                to={`/dashboard/builds/${build.id}`}
-                className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors"
+                className="flex items-center bg-slate-900 border border-slate-800 rounded-xl hover:border-slate-700 transition-colors"
               >
-                <div className="flex items-center gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-white">
-                      Build {build.id.slice(0, 8)}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Created {new Date(build.createdAt).toLocaleDateString()}{' '}
-                      at {new Date(build.createdAt).toLocaleTimeString()}
-                    </p>
+                <Link
+                  to={`/dashboard/builds/${build.id}`}
+                  className="flex-1 flex items-center justify-between p-4"
+                >
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-white">
+                        Build {build.id.slice(0, 8)}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Created{' '}
+                        {new Date(build.createdAt).toLocaleDateString()} at{' '}
+                        {new Date(build.createdAt).toLocaleTimeString()}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {build.complexityScore !== null && (() => {
-                    const info = classifyComplexity(build.complexityScore);
-                    return (
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${info.classes}`}
-                        title={`${info.description} (raw score: ${build.complexityScore})`}
-                      >
-                        {info.label}
-                      </span>
-                    );
-                  })()}
-                  <span className="text-xs text-slate-500">
-                    {build.currentPhase}
-                  </span>
-                  <BuildStatusBadge status={build.status} />
+                  <div className="flex items-center gap-3">
+                    {build.complexityScore !== null &&
+                      (() => {
+                        const info = classifyComplexity(
+                          build.complexityScore,
+                        );
+                        return (
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium ${info.classes}`}
+                            title={`${info.description} (raw score: ${build.complexityScore})`}
+                          >
+                            {info.label}
+                          </span>
+                        );
+                      })()}
+                    <span className="text-xs text-slate-500">
+                      {build.currentPhase}
+                    </span>
+                    <BuildStatusBadge status={build.status} />
+                    <svg
+                      className="w-4 h-4 text-slate-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </div>
+                </Link>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (
+                      window.confirm(
+                        'Delete this build? This cannot be undone.',
+                      )
+                    ) {
+                      deleteMutation.mutate(build.id);
+                    }
+                  }}
+                  disabled={deleteMutation.isPending}
+                  className="shrink-0 p-3 mr-2 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-30 transition-colors"
+                  title="Delete build"
+                >
                   <svg
-                    className="w-4 h-4 text-slate-600"
+                    className="w-4 h-4"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -103,11 +141,11 @@ export default function BuildsPage() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M9 5l7 7-7 7"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                     />
                   </svg>
-                </div>
-              </Link>
+                </button>
+              </div>
             ))}
           </div>
 
