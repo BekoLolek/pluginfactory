@@ -10,11 +10,12 @@ class ContainerSecurityConfigTest {
     private final ContainerSecurityConfig securityConfig = new ContainerSecurityConfig();
 
     @Test
-    void buildConstraints_memoryIs3GB() {
+    void buildConstraints_memoryIs3GB_withSwap() {
         HostConfig config = securityConfig.getSecurityConstraints(DockerService.ContainerType.BUILD);
 
         assertThat(config.getMemory()).isEqualTo(3L * 1024 * 1024 * 1024);
-        assertThat(config.getMemorySwap()).isEqualTo(3L * 1024 * 1024 * 1024);
+        // memory + 2GB swap
+        assertThat(config.getMemorySwap()).isEqualTo(5L * 1024 * 1024 * 1024);
     }
 
     @Test
