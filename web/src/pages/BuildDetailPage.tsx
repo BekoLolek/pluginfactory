@@ -18,6 +18,22 @@ import LoadingSkeleton from '@/components/LoadingSkeleton';
 import TypingIndicator from '@/components/TypingIndicator';
 import StarterQuestionnaire from '@/components/StarterQuestionnaire';
 
+const PHASE_LABELS: Record<string, string> = {
+  CLARIFICATION: 'Gathering requirements',
+  PLAN_GENERATION: 'Generating plan',
+  PLAN_REVIEW: 'Reviewing plan',
+  IMPLEMENTATION: 'Implementation',
+  COMPILATION: 'Compilation',
+  SECURITY_SCAN: 'Security scan',
+  INTEGRATION_TEST: 'Integration testing',
+  DELIVERING: 'Delivering',
+  IDLE: 'Idle',
+};
+
+function formatPhaseLabel(phase: string): string {
+  return PHASE_LABELS[phase] ?? phase;
+}
+
 export default function BuildDetailPage() {
   const { id } = useParams<{ id: string }>();
   const sessionId = id ?? '';
@@ -144,7 +160,7 @@ export default function BuildDetailPage() {
           Created {new Date(build.createdAt).toLocaleString()}
           {build.currentPhase !== 'IDLE' && (
             <span className="ml-3 text-slate-600">
-              Phase: {build.currentPhase}
+              Phase: {formatPhaseLabel(build.currentPhase)}
             </span>
           )}
         </p>

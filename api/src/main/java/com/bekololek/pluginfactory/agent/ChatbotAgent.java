@@ -112,23 +112,26 @@ public class ChatbotAgent {
         // 8. Call AnthropicClient
         AnthropicResponse response = anthropicClient.sendMessage(model, systemPrompt, messages, maxTokens);
 
-        // 9. Store both user message and assistant response
-        int totalTokens = response.inputTokens() + response.outputTokens();
-        chatMessageService.addMessage(sessionId, "user", cleanMessage, null, 0);
-        chatMessageService.addMessage(sessionId, "assistant", response.content(), response.model(), totalTokens);
-
-        // 10. Update token consumption
-        String phase = mapPhaseToTokenPhase(session.getCurrentPhase());
-        tokenBudgetService.consumeTokens(sessionId, phase, totalTokens);
-
-        // 11. Detect transition marker
+        // 9. Strip transition marker BEFORE storing so the raw marker text
+        //    never appears in the chat history or the UI.
         String content = response.content();
         String phaseTransition = null;
         if (content.contains(TRANSITION_MARKER)) {
             content = content.replace(TRANSITION_MARKER, "").trim();
             phaseTransition = "PLAN_GENERATION";
+        }
 
-            // Trigger plan generation
+        // 10. Store both user message and assistant response (cleaned)
+        int totalTokens = response.inputTokens() + response.outputTokens();
+        chatMessageService.addMessage(sessionId, "user", cleanMessage, null, 0);
+        chatMessageService.addMessage(sessionId, "assistant", content, response.model(), totalTokens);
+
+        // 11. Update token consumption
+        String tokenPhase = mapPhaseToTokenPhase(session.getCurrentPhase());
+        tokenBudgetService.consumeTokens(sessionId, tokenPhase, totalTokens);
+
+        // 12. If the AI signaled readiness, trigger plan generation
+        if (phaseTransition != null) {
             buildSessionService.updateStatus(sessionId, BuildStatus.PLANNING);
             try {
                 PlanDocument plan = planGenerationAgent.generatePlan(sessionId);
@@ -136,10 +139,15 @@ public class ChatbotAgent {
             } catch (Exception e) {
                 log.error("Plan generation failed for session {}", sessionId, e);
                 content += "\n\nPlan generation encountered an issue. Please try revising.";
+                // Roll status back to CHATTING so the user can keep
+                // refining their idea and the UI doesn't get stuck.
+                buildSessionService.updateStatus(sessionId, BuildStatus.CHATTING);
+                buildSessionService.updatePhase(sessionId, BuildPhase.CLARIFICATION);
+                phaseTransition = null;
             }
         }
 
-        // 12. Return AgentResponse
+        // 13. Return AgentResponse
         return new AgentResponse(content, response.model(), response.inputTokens(),
                 response.outputTokens(), phaseTransition);
     }
