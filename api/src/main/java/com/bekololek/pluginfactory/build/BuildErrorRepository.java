@@ -8,4 +8,6 @@ import java.util.UUID;
 public interface BuildErrorRepository extends JpaRepository<BuildError, UUID> {
 
     List<BuildError> findByIterationId(UUID iterationId);
+
+    void deleteByIterationIdIn(List<UUID> iterationIds);
 }

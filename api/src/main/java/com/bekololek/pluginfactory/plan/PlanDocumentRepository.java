@@ -8,4 +8,6 @@ import java.util.UUID;
 public interface PlanDocumentRepository extends JpaRepository<PlanDocument, UUID> {
 
     Optional<PlanDocument> findBySessionId(UUID sessionId);
+
+    void deleteBySessionId(UUID sessionId);
 }

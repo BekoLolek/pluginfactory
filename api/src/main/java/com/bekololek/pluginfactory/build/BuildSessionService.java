@@ -2,6 +2,8 @@ package com.bekololek.pluginfactory.build;
 
 import com.bekololek.pluginfactory.common.exception.ForbiddenException;
 import com.bekololek.pluginfactory.common.exception.NotFoundException;
+import com.bekololek.pluginfactory.container.ContainerSessionRepository;
+import com.bekololek.pluginfactory.plan.PlanDocumentRepository;
 import com.bekololek.pluginfactory.subscription.SubscriptionService;
 import com.bekololek.pluginfactory.subscription.Tier;
 import com.bekololek.pluginfactory.team.TeamService;
@@ -24,6 +26,13 @@ public class BuildSessionService {
     private final SubscriptionService subscriptionService;
     private final TokenBudgetService tokenBudgetService;
     private final BuildSessionRepository buildSessionRepository;
+    private final ChatMessageRepository chatMessageRepository;
+    private final TokenBudgetRepository tokenBudgetRepository;
+    private final BuildIterationRepository buildIterationRepository;
+    private final BuildErrorRepository buildErrorRepository;
+    private final ArtifactRepository artifactRepository;
+    private final PlanDocumentRepository planDocumentRepository;
+    private final ContainerSessionRepository containerSessionRepository;
     private final TeamService teamService;
     private final SharedWorkspaceRepository sharedWorkspaceRepository;
 
@@ -111,6 +120,38 @@ public class BuildSessionService {
         BuildSession saved = buildSessionRepository.save(session);
         refundIfFirstNonSuccessTerminal(session.getUserId(), previousStatus, BuildStatus.CANCELLED);
         return saved;
+    }
+
+    /**
+     * Permanently deletes a build session and all related data.
+     * Refunds the build slot if the session wasn't already in a
+     * terminal state.
+     */
+    @Transactional
+    public void deleteSession(UUID sessionId, UUID userId) {
+        BuildSession session = getSession(sessionId, userId);
+
+        // Refund if not already terminal
+        if (!isTerminal(session.getStatus())) {
+            subscriptionService.refundBuildSlot(userId);
+        }
+
+        // Delete child entities (order matters for FK constraints)
+        List<UUID> iterationIds = buildIterationRepository
+                .findBySessionIdOrderByIterationNumberAsc(sessionId)
+                .stream().map(BuildIteration::getId).toList();
+
+        if (!iterationIds.isEmpty()) {
+            buildErrorRepository.deleteByIterationIdIn(iterationIds);
+            containerSessionRepository.deleteByIterationIdIn(iterationIds);
+        }
+
+        artifactRepository.deleteBySessionId(sessionId);
+        buildIterationRepository.deleteBySessionId(sessionId);
+        chatMessageRepository.deleteBySessionId(sessionId);
+        tokenBudgetRepository.deleteBySessionId(sessionId);
+        planDocumentRepository.deleteBySessionId(sessionId);
+        buildSessionRepository.delete(session);
     }
 
     @Transactional

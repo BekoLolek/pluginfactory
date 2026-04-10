@@ -10,4 +10,6 @@ public interface BuildIterationRepository extends JpaRepository<BuildIteration, 
     List<BuildIteration> findBySessionIdOrderByIterationNumberAsc(UUID sessionId);
 
     List<BuildIteration> findByStatus(String status);
+
+    void deleteBySessionId(UUID sessionId);
 }

@@ -55,9 +55,9 @@ public class BuildSessionController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> cancelSession(@PathVariable UUID id) {
+    public ResponseEntity<Void> deleteSession(@PathVariable UUID id) {
         UUID userId = AuthenticatedUser.getCurrentUserId();
-        buildSessionService.cancelSession(id, userId);
+        buildSessionService.deleteSession(id, userId);
         return ResponseEntity.noContent().build();
     }
 

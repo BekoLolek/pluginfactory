@@ -10,4 +10,6 @@ public interface ContainerSessionRepository extends JpaRepository<ContainerSessi
     List<ContainerSession> findByIterationId(UUID iterationId);
 
     List<ContainerSession> findByReleasedAtIsNull();
+
+    void deleteByIterationIdIn(List<UUID> iterationIds);
 }

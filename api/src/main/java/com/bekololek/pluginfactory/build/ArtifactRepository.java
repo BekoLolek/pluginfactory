@@ -10,4 +10,6 @@ public interface ArtifactRepository extends JpaRepository<Artifact, UUID> {
     List<Artifact> findBySessionId(UUID sessionId);
 
     List<Artifact> findByIterationId(UUID iterationId);
+
+    void deleteBySessionId(UUID sessionId);
 }

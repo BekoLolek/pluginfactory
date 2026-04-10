@@ -8,4 +8,6 @@ import java.util.UUID;
 public interface TokenBudgetRepository extends JpaRepository<TokenBudget, UUID> {
 
     Optional<TokenBudget> findBySessionId(UUID sessionId);
+
+    void deleteBySessionId(UUID sessionId);
 }
