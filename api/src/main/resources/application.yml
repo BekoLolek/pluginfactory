@@ -75,6 +75,10 @@ anthropic:
 stripe:
   api-key: ${STRIPE_API_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  price:
+    basic: ${STRIPE_PRICE_BASIC:}
+    pro: ${STRIPE_PRICE_PRO:}
+    team: ${STRIPE_PRICE_TEAM:}
 
 discord:
   client-id: ${DISCORD_CLIENT_ID:dev-client-id}
@@ -131,6 +135,10 @@ stripe:
   # and rejects every webhook event, so make the missing config loud at boot.
   api-key: ${STRIPE_API_KEY}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+  price:
+    basic: ${STRIPE_PRICE_BASIC}
+    pro: ${STRIPE_PRICE_PRO}
+    team: ${STRIPE_PRICE_TEAM}
 
 discord:
   client-id: ${DISCORD_CLIENT_ID}

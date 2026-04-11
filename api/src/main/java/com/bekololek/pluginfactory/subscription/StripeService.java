@@ -40,25 +40,35 @@ public class StripeService {
     @Value("${app.base-url:http://localhost:5173}")
     private String baseUrl;
 
-    private static final Map<Tier, String> TIER_PRICE_IDS = Map.of(
-            Tier.BASIC, "price_basic_monthly",
-            Tier.PRO, "price_pro_monthly",
-            Tier.TEAM, "price_team_monthly"
-    );
+    @Value("${stripe.price.basic:}")
+    private String priceBasic;
+
+    @Value("${stripe.price.pro:}")
+    private String pricePro;
+
+    @Value("${stripe.price.team:}")
+    private String priceTeam;
+
+    private Map<Tier, String> tierPriceIds;
 
     @PostConstruct
     public void init() {
         if (apiKey != null && !apiKey.isBlank()) {
             Stripe.apiKey = apiKey;
         }
+        tierPriceIds = Map.of(
+                Tier.BASIC, priceBasic,
+                Tier.PRO, pricePro,
+                Tier.TEAM, priceTeam
+        );
     }
 
     public String createCheckoutSession(UUID userId, Tier targetTier) throws StripeException {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("User not found"));
 
-        String priceId = TIER_PRICE_IDS.get(targetTier);
-        if (priceId == null) {
+        String priceId = tierPriceIds.get(targetTier);
+        if (priceId == null || priceId.isBlank()) {
             throw new IllegalArgumentException("No price configured for tier: " + targetTier);
         }
 
