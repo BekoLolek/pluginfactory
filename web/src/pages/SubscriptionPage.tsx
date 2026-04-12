@@ -12,10 +12,10 @@ import LoadingSkeleton from '@/components/LoadingSkeleton';
 const TIER_ORDER = ['FREE', 'BASIC', 'PRO', 'TEAM'];
 
 const TIER_PRICES: Record<string, string> = {
-  FREE: '$0',
-  BASIC: '$9.99',
-  PRO: '$29.99',
-  TEAM: '$79.99',
+  FREE: '€0',
+  BASIC: '€9.99',
+  PRO: '€29.99',
+  TEAM: '€79.99',
 };
 
 export default function SubscriptionPage() {

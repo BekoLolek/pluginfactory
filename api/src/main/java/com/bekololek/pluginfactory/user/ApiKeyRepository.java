@@ -11,4 +11,6 @@ public interface ApiKeyRepository extends JpaRepository<ApiKey, UUID> {
     List<ApiKey> findByUserIdAndRevokedFalse(UUID userId);
 
     Optional<ApiKey> findByIdAndUserId(UUID id, UUID userId);
+
+    List<ApiKey> findByUserId(UUID userId);
 }

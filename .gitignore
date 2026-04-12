@@ -47,3 +47,6 @@ logs/
 
 # Test output
 test-output/
+
+# Local docs
+ADMIN-API.md

@@ -50,7 +50,7 @@ interface PricingTier {
 const TIERS: PricingTier[] = [
   {
     name: 'Free',
-    price: '$0',
+    price: '€0',
     period: '/mo',
     tagline: 'Kick the tires.',
     features: [
@@ -63,7 +63,7 @@ const TIERS: PricingTier[] = [
   },
   {
     name: 'Basic',
-    price: '$9.99',
+    price: '€9.99',
     period: '/mo',
     tagline: 'For solo plugin authors.',
     features: [
@@ -76,7 +76,7 @@ const TIERS: PricingTier[] = [
   },
   {
     name: 'Pro',
-    price: '$29.99',
+    price: '€29.99',
     period: '/mo',
     tagline: 'Ship serious plugins.',
     features: [
@@ -91,7 +91,7 @@ const TIERS: PricingTier[] = [
   },
   {
     name: 'Team',
-    price: '$79.99',
+    price: '€79.99',
     period: '/mo',
     tagline: 'Collaborate with your team.',
     features: [
