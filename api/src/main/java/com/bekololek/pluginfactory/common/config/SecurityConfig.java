@@ -27,6 +27,7 @@ import java.util.Map;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final com.bekololek.pluginfactory.auth.DashboardKeyFilter dashboardKeyFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -76,6 +77,7 @@ public class SecurityConfig {
                             new ObjectMapper().writeValue(response.getOutputStream(), body);
                         })
                 )
+                .addFilterBefore(dashboardKeyFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

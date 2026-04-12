@@ -1,6 +1,9 @@
 server:
   port: 8080
 
+dashboard:
+  api-key: ${DASHBOARD_API_KEY:}
+
 spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
