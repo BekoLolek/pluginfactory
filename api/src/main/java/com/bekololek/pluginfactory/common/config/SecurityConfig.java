@@ -1,9 +1,11 @@
 package com.bekololek.pluginfactory.common.config;
 
+import com.bekololek.pluginfactory.auth.DashboardKeyFilter;
 import com.bekololek.pluginfactory.auth.JwtAuthenticationFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -27,7 +29,16 @@ import java.util.Map;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final com.bekololek.pluginfactory.auth.DashboardKeyFilter dashboardKeyFilter;
+    private final DashboardKeyFilter dashboardKeyFilter;
+
+    /** Prevent Spring Boot from auto-registering DashboardKeyFilter as a servlet filter.
+     *  It must only run inside the Spring Security filter chain. */
+    @Bean
+    public FilterRegistrationBean<DashboardKeyFilter> disableDashboardKeyAutoRegistration(DashboardKeyFilter filter) {
+        FilterRegistrationBean<DashboardKeyFilter> reg = new FilterRegistrationBean<>(filter);
+        reg.setEnabled(false);
+        return reg;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
