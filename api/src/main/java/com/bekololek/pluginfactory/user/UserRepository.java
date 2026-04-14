@@ -21,9 +21,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     long countByCreatedAtAfter(Instant since);
 
     @Query("SELECT u FROM User u WHERE " +
-            "(:status IS NULL OR u.status = :status) AND " +
-            "(:search IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) " +
-            "OR LOWER(u.displayName) LIKE LOWER(CONCAT('%', :search, '%')))")
+            "(CAST(:status AS text) IS NULL OR u.status = :status) AND " +
+            "(CAST(:search AS text) IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', CAST(:search AS text), '%')) " +
+            "OR LOWER(u.displayName) LIKE LOWER(CONCAT('%', CAST(:search AS text), '%')))")
     Page<User> findWithFilters(
             @Param("status") User.UserStatus status,
             @Param("search") String search,

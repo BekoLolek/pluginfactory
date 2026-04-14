@@ -38,8 +38,8 @@ public interface BuildSessionRepository extends JpaRepository<BuildSession, UUID
     long countByCreatedAtBetween(Instant from, Instant to);
 
     @Query("SELECT b FROM BuildSession b WHERE " +
-            "(:status IS NULL OR b.status = :status) AND " +
-            "(:userId IS NULL OR b.userId = :userId) AND " +
+            "(CAST(:status AS text) IS NULL OR b.status = :status) AND " +
+            "(CAST(:userId AS text) IS NULL OR b.userId = :userId) AND " +
             "(CAST(:from AS timestamp) IS NULL OR b.createdAt >= :from) AND " +
             "(CAST(:to AS timestamp) IS NULL OR b.createdAt <= :to)")
     Page<BuildSession> findWithFilters(

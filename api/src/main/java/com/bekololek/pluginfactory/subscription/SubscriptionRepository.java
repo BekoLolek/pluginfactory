@@ -23,8 +23,8 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
     long countByStatusAndTierNot(Subscription.SubscriptionStatus status, Tier tier);
 
     @Query("SELECT s FROM Subscription s WHERE " +
-            "(:tier IS NULL OR s.tier = :tier) AND " +
-            "(:status IS NULL OR s.status = :status)")
+            "(CAST(:tier AS text) IS NULL OR s.tier = :tier) AND " +
+            "(CAST(:status AS text) IS NULL OR s.status = :status)")
     Page<Subscription> findWithFilters(
             @Param("tier") Tier tier,
             @Param("status") Subscription.SubscriptionStatus status,
