@@ -15,8 +15,8 @@ public interface BuildErrorRepository extends JpaRepository<BuildError, UUID> {
     void deleteByIterationIdIn(List<UUID> iterationIds);
 
     @Query("SELECT e FROM BuildError e WHERE " +
-            "(:from IS NULL OR e.createdAt >= :from) AND " +
-            "(:to IS NULL OR e.createdAt <= :to)")
+            "(CAST(:from AS timestamp) IS NULL OR e.createdAt >= :from) AND " +
+            "(CAST(:to AS timestamp) IS NULL OR e.createdAt <= :to)")
     List<BuildError> findWithFilters(
             @Param("from") Instant from,
             @Param("to") Instant to);

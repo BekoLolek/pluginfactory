@@ -40,8 +40,8 @@ public interface BuildSessionRepository extends JpaRepository<BuildSession, UUID
     @Query("SELECT b FROM BuildSession b WHERE " +
             "(:status IS NULL OR b.status = :status) AND " +
             "(:userId IS NULL OR b.userId = :userId) AND " +
-            "(:from IS NULL OR b.createdAt >= :from) AND " +
-            "(:to IS NULL OR b.createdAt <= :to)")
+            "(CAST(:from AS timestamp) IS NULL OR b.createdAt >= :from) AND " +
+            "(CAST(:to AS timestamp) IS NULL OR b.createdAt <= :to)")
     Page<BuildSession> findWithFilters(
             @Param("status") BuildStatus status,
             @Param("userId") UUID userId,
