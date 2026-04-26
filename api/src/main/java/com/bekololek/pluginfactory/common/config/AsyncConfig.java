@@ -1,5 +1,6 @@
 package com.bekololek.pluginfactory.common.config;
 
+import com.bekololek.pluginfactory.common.logging.MdcAsyncTaskDecorator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
@@ -37,6 +38,10 @@ public class AsyncConfig {
         executor.setMaxPoolSize(4);
         executor.setQueueCapacity(16);
         executor.setThreadNamePrefix("build-pipeline-");
+        // Carry MDC (requestId, userId, sessionId) from the submitting
+        // thread into the worker so async build logs stay correlatable
+        // to the originating request.
+        executor.setTaskDecorator(new MdcAsyncTaskDecorator());
         // Graceful shutdown: on SIGTERM we wait up to two minutes for
         // in-flight builds to finish before the JVM exits. Anything
         // still running after that will be picked up by

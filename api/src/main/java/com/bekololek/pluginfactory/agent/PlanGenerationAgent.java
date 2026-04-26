@@ -1,6 +1,6 @@
 package com.bekololek.pluginfactory.agent;
 
-import com.bekololek.pluginfactory.agent.dto.AnthropicResponse;
+import com.bekololek.pluginfactory.build.BuildErrorRecorder;
 import com.bekololek.pluginfactory.build.BuildPhase;
 import com.bekololek.pluginfactory.build.BuildSessionService;
 import com.bekololek.pluginfactory.build.BuildStatus;
@@ -25,14 +25,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 @Slf4j
 public class PlanGenerationAgent {
 
-    private static final Pattern JSON_BLOCK_PATTERN = Pattern.compile("```(?:json)?\\s*\\n?(.*?)\\n?```", Pattern.DOTALL);
+    static final String PLAN_TOOL_NAME = "submit_plan";
+    private static final String PLAN_TOOL_DESCRIPTION =
+            "Submit the finalized Minecraft plugin development plan. " +
+            "You MUST call this tool with the complete plan; do not ask follow-up questions.";
 
     private final AnthropicClient anthropicClient;
     private final ModelRouter modelRouter;
@@ -42,6 +43,7 @@ public class PlanGenerationAgent {
     private final PlanDocumentRepository planDocumentRepository;
     private final ComplexityEstimator complexityEstimator;
     private final ObjectMapper objectMapper;
+    private final BuildErrorRecorder buildErrorRecorder;
     private final String systemPrompt;
 
     public PlanGenerationAgent(AnthropicClient anthropicClient,
@@ -51,7 +53,8 @@ public class PlanGenerationAgent {
                                BuildSessionService buildSessionService,
                                PlanDocumentRepository planDocumentRepository,
                                ComplexityEstimator complexityEstimator,
-                               ObjectMapper objectMapper) throws IOException {
+                               ObjectMapper objectMapper,
+                               BuildErrorRecorder buildErrorRecorder) throws IOException {
         this.anthropicClient = anthropicClient;
         this.modelRouter = modelRouter;
         this.chatMessageService = chatMessageService;
@@ -60,12 +63,22 @@ public class PlanGenerationAgent {
         this.planDocumentRepository = planDocumentRepository;
         this.complexityEstimator = complexityEstimator;
         this.objectMapper = objectMapper;
+        this.buildErrorRecorder = buildErrorRecorder;
         try (InputStream is = new ClassPathResource("prompts/plan_generation_system.txt").getInputStream()) {
             this.systemPrompt = new String(is.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
     public PlanDocument generatePlan(UUID sessionId) {
+        try {
+            return doGeneratePlan(sessionId);
+        } catch (RuntimeException e) {
+            buildErrorRecorder.record(sessionId, "PLAN_GENERATION", "ERROR", e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    private PlanDocument doGeneratePlan(UUID sessionId) {
         // 1. Load chat history
         List<ChatMessage> history = chatMessageService.getMessages(sessionId);
 
@@ -82,16 +95,14 @@ public class PlanGenerationAgent {
             messages.add(m);
         }
 
-        // 4. Call AnthropicClient
-        AnthropicResponse response = anthropicClient.sendMessage(model, systemPrompt, messages, maxTokens);
+        // 4. Call AnthropicClient with forced tool use — model must return structured input
+        AnthropicClient.ToolUseResponse response = anthropicClient.sendMessageWithTool(
+                model, systemPrompt, messages, maxTokens,
+                PLAN_TOOL_NAME, PLAN_TOOL_DESCRIPTION, planToolSchema());
 
-        // 5. Parse JSON response
-        String jsonContent = extractJson(response.content());
-        JsonNode root;
-        try {
-            root = objectMapper.readTree(jsonContent);
-        } catch (Exception e) {
-            log.error("Failed to parse plan JSON: {}", response.content(), e);
+        JsonNode root = response.input();
+        if (root == null || !root.isObject()) {
+            log.error("Plan tool returned non-object input: {}", root);
             throw new ValidationException("Failed to parse plan from AI response. Please try again.");
         }
 
@@ -142,22 +153,44 @@ public class PlanGenerationAgent {
         return planDocumentRepository.save(plan);
     }
 
-    String extractJson(String content) {
-        // Try to extract from ```json ... ``` blocks
-        Matcher matcher = JSON_BLOCK_PATTERN.matcher(content);
-        if (matcher.find()) {
-            return matcher.group(1).trim();
-        }
+    private static Map<String, Object> planToolSchema() {
+        Map<String, Object> commandItem = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "name", Map.of("type", "string"),
+                        "description", Map.of("type", "string"),
+                        "permission", Map.of("type", "string"),
+                        "usage", Map.of("type", "string")
+                ),
+                "required", List.of("name", "description")
+        );
 
-        // Try to find JSON object by locating first { and last }
-        int firstBrace = content.indexOf('{');
-        int lastBrace = content.lastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace) {
-            return content.substring(firstBrace, lastBrace + 1);
-        }
+        Map<String, Object> eventItem = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "event", Map.of("type", "string"),
+                        "description", Map.of("type", "string")
+                ),
+                "required", List.of("event", "description")
+        );
 
-        // Return as-is and let JSON parser handle errors
-        return content.trim();
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("pluginName", Map.of("type", "string"));
+        properties.put("description", Map.of("type", "string"));
+        properties.put("minecraftVersion", Map.of("type", "string"));
+        properties.put("serverType", Map.of("type", "string"));
+        properties.put("commands", Map.of("type", "array", "items", commandItem));
+        properties.put("eventListeners", Map.of("type", "array", "items", eventItem));
+        properties.put("configSchema", Map.of("type", "object", "additionalProperties", true));
+        properties.put("dependencies", Map.of("type", "array", "items", Map.of("type", "string")));
+        properties.put("testScenarios", Map.of("type", "array", "items", Map.of("type", "string")));
+        properties.put("estimatedLinesOfCode", Map.of("type", "integer"));
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of("pluginName", "description", "commands", "eventListeners"));
+        return schema;
     }
 
     private String getTextOrNull(JsonNode node, String field) {

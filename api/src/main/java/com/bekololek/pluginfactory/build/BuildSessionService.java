@@ -159,6 +159,13 @@ public class BuildSessionService {
         BuildSession session = getSessionById(sessionId);
         BuildStatus previousStatus = session.getStatus();
         session.setStatus(status);
+        // Stamp completedAt on the first transition into any terminal state so
+        // failed/cancelled sessions stop showing up as "completedAt: null"
+        // zombies in admin queries. Only set it once — re-entries (e.g.
+        // FAILED → CANCELLED) keep the original completion timestamp.
+        if (isTerminal(status) && session.getCompletedAt() == null) {
+            session.setCompletedAt(Instant.now());
+        }
         BuildSession saved = buildSessionRepository.save(session);
         refundIfFirstNonSuccessTerminal(session.getUserId(), previousStatus, status);
         return saved;

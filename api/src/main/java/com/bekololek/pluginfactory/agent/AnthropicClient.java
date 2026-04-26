@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import com.fasterxml.jackson.databind.JsonNode;
 
 @Service
 @Slf4j
@@ -70,6 +71,71 @@ public class AnthropicClient {
         log.error("Anthropic API unavailable, circuit breaker triggered", e);
         throw new RuntimeException("AI service temporarily unavailable. Please try again in a moment.");
     }
+
+    /**
+     * Forces structured output via tool use. The model must respond by calling {@code toolName}
+     * with input matching {@code toolInputSchema}; the parsed input is returned as a JsonNode.
+     */
+    @io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker(name = "anthropic", fallbackMethod = "toolUseFallback")
+    @io.github.resilience4j.retry.annotation.Retry(name = "anthropic")
+    @SuppressWarnings("unchecked")
+    public ToolUseResponse sendMessageWithTool(String model, String systemPrompt,
+                                                List<Map<String, String>> messages, int maxTokens,
+                                                String toolName, String toolDescription,
+                                                Map<String, Object> toolInputSchema) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("x-api-key", apiKey);
+        headers.set("anthropic-version", "2023-06-01");
+
+        Map<String, Object> tool = new LinkedHashMap<>();
+        tool.put("name", toolName);
+        tool.put("description", toolDescription);
+        tool.put("input_schema", toolInputSchema);
+
+        Map<String, Object> toolChoice = new LinkedHashMap<>();
+        toolChoice.put("type", "tool");
+        toolChoice.put("name", toolName);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        body.put("max_tokens", maxTokens);
+        body.put("system", systemPrompt);
+        body.put("messages", messages);
+        body.put("tools", List.of(tool));
+        body.put("tool_choice", toolChoice);
+
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                ANTHROPIC_API_URL, new HttpEntity<>(body, headers), Map.class);
+
+        Map<String, Object> responseBody = response.getBody();
+        List<Map<String, Object>> content = (List<Map<String, Object>>) responseBody.get("content");
+
+        Map<String, Object> toolUseBlock = content.stream()
+                .filter(b -> "tool_use".equals(b.get("type")) && toolName.equals(b.get("name")))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Expected tool_use block named '" + toolName + "' but none returned"));
+
+        JsonNode input = new ObjectMapper().valueToTree(toolUseBlock.get("input"));
+
+        Map<String, Object> usage = (Map<String, Object>) responseBody.get("usage");
+        int inputTokens = ((Number) usage.get("input_tokens")).intValue();
+        int outputTokens = ((Number) usage.get("output_tokens")).intValue();
+
+        return new ToolUseResponse(input, model, inputTokens, outputTokens);
+    }
+
+    private ToolUseResponse toolUseFallback(String model, String systemPrompt,
+                                             List<Map<String, String>> messages, int maxTokens,
+                                             String toolName, String toolDescription,
+                                             Map<String, Object> toolInputSchema,
+                                             Exception e) {
+        log.error("Anthropic API unavailable, circuit breaker triggered", e);
+        throw new RuntimeException("AI service temporarily unavailable. Please try again in a moment.");
+    }
+
+    public record ToolUseResponse(JsonNode input, String model, int inputTokens, int outputTokens) {}
 
     public void sendMessageStreaming(String model, String systemPrompt,
                                      List<Map<String, String>> messages, int maxTokens,

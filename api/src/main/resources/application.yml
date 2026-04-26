@@ -19,10 +19,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics
+        include: health,info,prometheus,metrics,loggers
   endpoint:
     health:
       show-details: when-authorized
+    loggers:
+      access: unrestricted
+
+logging:
+  file:
+    path: ${LOG_FILE_PATH:logs}
 
 resilience4j:
   circuitbreaker:
@@ -35,11 +41,13 @@ resilience4j:
   retry:
     instances:
       anthropic:
-        maxAttempts: 3
+        maxAttempts: 2
         waitDuration: 2s
         retryExceptions:
-          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+        ignoreExceptions:
           - java.net.SocketTimeoutException
+          - org.springframework.web.client.ResourceAccessException
   ratelimiter:
     instances:
       auth:

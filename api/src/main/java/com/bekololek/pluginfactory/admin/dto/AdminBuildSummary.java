@@ -12,5 +12,7 @@ public record AdminBuildSummary(
         int tokensConsumed,
         int iterationCount,
         Instant createdAt,
-        Instant completedAt
+        Instant completedAt,
+        String latestErrorCategory,
+        String latestErrorMessage
 ) {}

@@ -23,7 +23,10 @@ public class BuildError {
     @Column(updatable = false, nullable = false)
     private UUID id;
 
-    @Column(name = "iteration_id", nullable = false)
+    @Column(name = "session_id", nullable = false)
+    private UUID sessionId;
+
+    @Column(name = "iteration_id")
     private UUID iterationId;
 
     @Column(nullable = false)

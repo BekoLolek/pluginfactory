@@ -177,14 +177,52 @@ public class AdminService {
                     .map(User::getEmail).orElse("unknown");
             TokenBudget tb = tokenBudgetRepository.findBySessionId(b.getId()).orElse(null);
             long iterations = buildIterationRepository.countBySessionId(b.getId());
+            BuildError latest = buildErrorRepository.findFirstBySessionIdOrderByCreatedAtDesc(b.getId());
             return new AdminBuildSummary(
                     b.getId(), email, b.getStatus().name(), b.getCurrentPhase().name(),
                     b.getComplexityScore(),
                     tb != null ? tb.getConsumedTokens() : 0,
                     (int) iterations,
-                    b.getCreatedAt(), b.getCompletedAt()
+                    b.getCreatedAt(), b.getCompletedAt(),
+                    latest != null ? latest.getCategory() : null,
+                    latest != null ? truncate(latest.getMessage(), 240) : null
             );
         });
+    }
+
+    public Page<AdminErrorRecord> getRecentErrors(UUID sessionId, UUID userId, String category,
+                                                  String severity, Instant from, Instant to,
+                                                  Pageable pageable) {
+        Page<BuildError> errors = buildErrorRepository.findRecentWithFilters(
+                sessionId, userId, category, severity, from, to, pageable);
+        return errors.map(this::toRecord);
+    }
+
+    public List<AdminErrorRecord> getSessionErrors(UUID sessionId) {
+        return buildErrorRepository.findBySessionIdOrderByCreatedAtAsc(sessionId).stream()
+                .map(this::toRecord)
+                .toList();
+    }
+
+    private AdminErrorRecord toRecord(BuildError e) {
+        BuildSession session = buildSessionRepository.findById(e.getSessionId()).orElse(null);
+        Integer iterationNumber = e.getIterationId() == null ? null
+                : buildIterationRepository.findById(e.getIterationId())
+                .map(BuildIteration::getIterationNumber).orElse(null);
+        UUID uid = session != null ? session.getUserId() : null;
+        String email = uid != null
+                ? userRepository.findById(uid).map(User::getEmail).orElse("unknown")
+                : "unknown";
+        return new AdminErrorRecord(
+                e.getId(), e.getSessionId(), e.getIterationId(), iterationNumber,
+                uid, email, e.getCategory(), e.getSeverity(),
+                e.getMessage(), e.getStackTrace(), e.getRetryCount(), e.getCreatedAt()
+        );
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return null;
+        return s.length() <= max ? s : s.substring(0, max) + "…";
     }
 
     public BuildStatsResponse getBuildStats(Instant from, Instant to) {

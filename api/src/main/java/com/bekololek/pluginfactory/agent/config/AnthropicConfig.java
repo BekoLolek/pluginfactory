@@ -14,7 +14,7 @@ public class AnthropicConfig {
     public RestTemplate anthropicRestTemplate() {
         var factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10_000);
-        factory.setReadTimeout(120_000);
+        factory.setReadTimeout(180_000);
         return new RestTemplate(factory);
     }
 }

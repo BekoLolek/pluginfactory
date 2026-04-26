@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -93,5 +94,24 @@ public class AdminController {
             @RequestParam(required = false) Instant from,
             @RequestParam(required = false) Instant to) {
         return ResponseEntity.ok(adminService.getErrorStats(from, to));
+    }
+
+    @GetMapping("/errors/recent")
+    public ResponseEntity<Page<AdminErrorRecord>> getRecentErrors(
+            @RequestParam(required = false) UUID sessionId,
+            @RequestParam(required = false) UUID userId,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String severity,
+            @RequestParam(required = false) Instant from,
+            @RequestParam(required = false) Instant to,
+            @PageableDefault(size = 50, sort = "createdAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
+        return ResponseEntity.ok(adminService.getRecentErrors(
+                sessionId, userId, category, severity, from, to, pageable));
+    }
+
+    @GetMapping("/builds/{sessionId}/errors")
+    public ResponseEntity<List<AdminErrorRecord>> getSessionErrors(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(adminService.getSessionErrors(sessionId));
     }
 }

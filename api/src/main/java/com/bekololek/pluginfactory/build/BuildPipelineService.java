@@ -3,6 +3,8 @@ package com.bekololek.pluginfactory.build;
 import com.bekololek.pluginfactory.agent.ImplementerAgent;
 import com.bekololek.pluginfactory.agent.dto.ImplementationResult;
 import com.bekololek.pluginfactory.common.config.AsyncConfig;
+import com.bekololek.pluginfactory.common.logging.MdcRequestFilter;
+import org.slf4j.MDC;
 import com.bekololek.pluginfactory.container.ContainerPoolManager;
 import com.bekololek.pluginfactory.container.ContainerSession;
 import com.bekololek.pluginfactory.container.ContainerSessionRepository;
@@ -66,6 +68,7 @@ public class BuildPipelineService {
      */
     @Async(AsyncConfig.BUILD_EXECUTOR)
     public void executeBuild(UUID sessionId, UUID iterationId) {
+        MDC.put(MdcRequestFilter.SESSION_ID, sessionId.toString());
         try {
             executeBuildInternal(sessionId, iterationId);
         } catch (Throwable t) {
@@ -87,6 +90,8 @@ public class BuildPipelineService {
             if (t instanceof Error) {
                 throw (Error) t;
             }
+        } finally {
+            MDC.remove(MdcRequestFilter.SESSION_ID);
         }
     }
 
@@ -221,6 +226,7 @@ public class BuildPipelineService {
         int retryCount = buildErrorRepository.findByIterationId(iteration.getId()).size();
 
         BuildError error = new BuildError();
+        error.setSessionId(sessionId);
         error.setIterationId(iteration.getId());
         error.setCategory(classified.name());
         error.setSeverity("ERROR");
