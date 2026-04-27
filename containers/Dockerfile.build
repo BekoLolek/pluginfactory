@@ -1,4 +1,10 @@
-FROM eclipse-temurin:17-jdk-jammy
+FROM eclipse-temurin:21-jdk-jammy
+# Java 21 is the JDK requirement for Paper 1.20.5+ and 1.21.x — paper-api
+# ships Java-21 bytecode for those versions, which a Java 17 javac can't
+# read. Older Paper (1.18 – 1.20.4) ships Java 17 bytecode and we still
+# support compiling against it: the pom template emits <release>17</release>
+# for those targets, so Java 21 javac produces Java-17-compatible bytecode
+# that loads on older servers.
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     maven gradle git curl && \

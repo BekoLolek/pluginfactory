@@ -38,6 +38,7 @@ public class TemplateService {
         String version = "1.0.0";
         String minecraftVersion = sanitizeMinecraftVersion(plan.getMinecraftVersion());
         String apiVersion = extractApiVersion(minecraftVersion);
+        String javaVersion = javaVersionFor(minecraftVersion);
         String description = plan.getDescription() != null ? plan.getDescription() : "";
 
         // Render pom.xml
@@ -45,7 +46,8 @@ public class TemplateService {
         String pom = pomTemplate
                 .replace("{{artifactId}}", artifactId)
                 .replace("{{version}}", version)
-                .replace("{{minecraftVersion}}", minecraftVersion);
+                .replace("{{minecraftVersion}}", minecraftVersion)
+                .replace("{{javaVersion}}", javaVersion);
         files.put("pom.xml", pom);
 
         // Render plugin.yml
@@ -110,6 +112,37 @@ public class TemplateService {
             return parts[0] + "." + parts[1];
         }
         return minecraftVersion;
+    }
+
+    /**
+     * Maps a Paper minecraft version to the Java release the build must
+     * use. Paper requirements:
+     * <ul>
+     *   <li>1.20.5 and 1.21.x ship Java 21 bytecode in paper-api and
+     *       require Java 21 to load on the server</li>
+     *   <li>1.18 - 1.20.4 ship Java 17 bytecode</li>
+     * </ul>
+     * Compiling against a newer paper-api with an older javac fails
+     * with "class file has wrong version 65.0, should be 61.0", so the
+     * build container must have Java 21 (it does as of the Java-21
+     * Dockerfile bump) and the pom must request the right release per
+     * target so the resulting jar actually loads on the user's server.
+     */
+    String javaVersionFor(String mcVersion) {
+        try {
+            String[] parts = mcVersion.split("\\.");
+            int minor = Integer.parseInt(parts[1]);
+            int patch = parts.length >= 3 ? Integer.parseInt(parts[2]) : 0;
+            if (minor >= 21) return "21";
+            if (minor == 20 && patch >= 5) return "21";
+            return "17";
+        } catch (Exception e) {
+            // sanitizeMinecraftVersion guarantees the strict pattern, so
+            // this branch is unreachable in practice. Default to 21
+            // because that's the safer modern choice.
+            log.warn("Could not parse minecraftVersion '{}', defaulting Java to 21", mcVersion);
+            return "21";
+        }
     }
 
     /**
@@ -242,7 +275,8 @@ public class TemplateService {
                         <version>{{version}}</version>
                         <packaging>jar</packaging>
                         <properties>
-                            <java.version>17</java.version>
+                            <java.version>{{javaVersion}}</java.version>
+                            <maven.compiler.release>{{javaVersion}}</maven.compiler.release>
                             <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
                         </properties>
                         <repositories>
@@ -266,8 +300,7 @@ public class TemplateService {
                                     <artifactId>maven-compiler-plugin</artifactId>
                                     <version>3.11.0</version>
                                     <configuration>
-                                        <source>17</source>
-                                        <target>17</target>
+                                        <release>{{javaVersion}}</release>
                                     </configuration>
                                 </plugin>
                                 <plugin>
