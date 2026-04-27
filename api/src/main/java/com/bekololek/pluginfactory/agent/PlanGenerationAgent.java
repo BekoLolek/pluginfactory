@@ -177,7 +177,16 @@ public class PlanGenerationAgent {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("pluginName", Map.of("type", "string"));
         properties.put("description", Map.of("type", "string"));
-        properties.put("minecraftVersion", Map.of("type", "string"));
+        // Pattern-locked: must be an exact major.minor.patch like "1.21.4".
+        // Anthropic enforces JSON Schema patterns server-side when tool_choice
+        // forces this tool, so the model literally cannot return "1.21.x" or
+        // "latest" — those would have killed Maven before any Java compiled.
+        properties.put("minecraftVersion", Map.of(
+                "type", "string",
+                "pattern", "^\\d+\\.\\d+\\.\\d+$",
+                "description", "Exact Paper release version (e.g. 1.21.4). " +
+                        "Must be a real published paper-api artifact — no wildcards, no major-only."
+        ));
         properties.put("serverType", Map.of("type", "string"));
         properties.put("commands", Map.of("type", "array", "items", commandItem));
         properties.put("eventListeners", Map.of("type", "array", "items", eventItem));

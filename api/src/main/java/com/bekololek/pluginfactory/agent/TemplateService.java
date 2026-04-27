@@ -21,13 +21,22 @@ public class TemplateService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String TEMPLATE_BASE = "agents/templates/plugin-template/";
 
+    /** Strict major.minor.patch — only versions matching this can be a real
+     *  paper-api Maven artifact. Anything else (wildcards like "1.21.x",
+     *  major-only like "1.21", garbage from the LLM) gets swapped to
+     *  {@link #DEFAULT_MINECRAFT_VERSION} below. */
+    private static final java.util.regex.Pattern STRICT_MC_VERSION =
+            java.util.regex.Pattern.compile("^\\d+\\.\\d+\\.\\d+$");
+
+    private static final String DEFAULT_MINECRAFT_VERSION = "1.21.4";
+
     public Map<String, String> renderTemplate(PlanDocument plan) {
         Map<String, String> files = new LinkedHashMap<>();
 
         String mainClassName = toClassName(plan.getPluginName());
         String artifactId = toArtifactId(plan.getPluginName());
         String version = "1.0.0";
-        String minecraftVersion = plan.getMinecraftVersion() != null ? plan.getMinecraftVersion() : "1.20.4";
+        String minecraftVersion = sanitizeMinecraftVersion(plan.getMinecraftVersion());
         String apiVersion = extractApiVersion(minecraftVersion);
         String description = plan.getDescription() != null ? plan.getDescription() : "";
 
@@ -101,6 +110,23 @@ public class TemplateService {
             return parts[0] + "." + parts[1];
         }
         return minecraftVersion;
+    }
+
+    /**
+     * Templated verbatim into pom.xml as the paper-api Maven coordinate.
+     * The plan agent occasionally produces non-resolvable versions like
+     * "1.21.x", "latest", or just a major like "1.21" — which kill the
+     * Maven build before any Java compiles. Replace anything that isn't
+     * an exact major.minor.patch with a known-good default and warn so
+     * the rate of fallbacks is visible in logs.
+     */
+    String sanitizeMinecraftVersion(String raw) {
+        if (raw != null && STRICT_MC_VERSION.matcher(raw).matches()) {
+            return raw;
+        }
+        log.warn("Plan stored unresolvable minecraftVersion '{}' — falling back to {}",
+                raw, DEFAULT_MINECRAFT_VERSION);
+        return DEFAULT_MINECRAFT_VERSION;
     }
 
     private String generateCommandsYaml(String commandsJson) {
