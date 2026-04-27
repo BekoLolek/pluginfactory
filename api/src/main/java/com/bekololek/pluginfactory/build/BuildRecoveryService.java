@@ -234,20 +234,21 @@ public class BuildRecoveryService {
             latest = iteration;
         }
 
-        // Attach a BuildError against the most recent iteration (if any)
-        // so the UI has something concrete to show under "errors". If
-        // the session never even got an iteration — e.g. it died in
-        // PLANNING before approveBuild created one — we skip this,
-        // because BuildError requires an iteration_id.
+        // Attach a BuildError so the admin error endpoints have something
+        // concrete to show. Since V13, session_id is the required link and
+        // iteration_id is optional, so we can record reaper kills for
+        // sessions that died pre-iteration (e.g. stuck in PLANNING) too —
+        // those used to be invisible.
+        BuildError error = new BuildError();
+        error.setSessionId(sessionId);
         if (latest != null) {
-            BuildError error = new BuildError();
             error.setIterationId(latest.getId());
-            error.setCategory("SYSTEM");
-            error.setSeverity("ERROR");
-            error.setMessage(reason);
-            error.setRetryCount(0);
-            buildErrorRepository.save(error);
         }
+        error.setCategory("SYSTEM");
+        error.setSeverity("ERROR");
+        error.setMessage(reason);
+        error.setRetryCount(0);
+        buildErrorRepository.save(error);
 
         // Refund the build slot. We bypass BuildSessionService.updateStatus
         // because recovery needs to set status + phase + completedAt
