@@ -1,10 +1,12 @@
 package com.bekololek.pluginfactory.build;
 
+import com.bekololek.pluginfactory.build.dto.BuildIterationDto;
 import com.bekololek.pluginfactory.build.dto.BuildSessionDto;
 import com.bekololek.pluginfactory.build.dto.ChatMessageDto;
 import com.bekololek.pluginfactory.build.dto.TokenBudgetDto;
 import com.bekololek.pluginfactory.common.util.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -23,11 +25,22 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/builds")
 @RequiredArgsConstructor
+@Slf4j
 public class BuildSessionController {
+
+    /**
+     * Maximum self-service recovery attempts per session before the user
+     * has to start a new build. Cap exists to bound the cost of a
+     * deterministic failure (bad plan, impossible API) — without it a
+     * frustrated user can drain their token quota hammering Retry on a
+     * build that will never converge.
+     */
+    private static final int MAX_USER_RECOVERIES_PER_SESSION = 2;
 
     private final BuildSessionService buildSessionService;
     private final TokenBudgetService tokenBudgetService;
     private final ChatMessageService chatMessageService;
+    private final FailedBuildRecoveryService failedBuildRecoveryService;
 
     @PostMapping
     public ResponseEntity<BuildSessionDto> createSession() {
@@ -69,6 +82,21 @@ public class BuildSessionController {
         return ResponseEntity.ok(toBudgetDto(budget));
     }
 
+    /**
+     * Re-runs implementation/compilation on this user's FAILED build using
+     * the existing approved plan + last error as fix-context. Capped at
+     * {@link #MAX_USER_RECOVERIES_PER_SESSION} attempts per session.
+     * Tokens already spent stay charged; no new build slot is consumed.
+     */
+    @PostMapping("/{id}/recover")
+    public ResponseEntity<BuildIterationDto> recoverBuild(@PathVariable UUID id) {
+        UUID userId = AuthenticatedUser.getCurrentUserId();
+        log.info("User {} requested self-service recovery of session {}", userId, id);
+        BuildIteration iteration = failedBuildRecoveryService.userRecover(
+                id, userId, MAX_USER_RECOVERIES_PER_SESSION);
+        return ResponseEntity.ok(toIterationDto(iteration));
+    }
+
     @GetMapping("/{id}/messages")
     public ResponseEntity<List<ChatMessageDto>> getMessages(@PathVariable UUID id) {
         UUID userId = AuthenticatedUser.getCurrentUserId();
@@ -102,6 +130,18 @@ public class BuildSessionController {
                 budget.getTestingTokens(),
                 budget.getThresholdStatus().name(),
                 budget.getAllocatedTokens() - budget.getConsumedTokens()
+        );
+    }
+
+    private BuildIterationDto toIterationDto(BuildIteration iteration) {
+        return new BuildIterationDto(
+                iteration.getId(),
+                iteration.getSessionId(),
+                iteration.getIterationNumber(),
+                iteration.getStatus(),
+                iteration.getTrigger(),
+                iteration.getStartedAt(),
+                iteration.getCompletedAt()
         );
     }
 

@@ -3,12 +3,10 @@ package com.bekololek.pluginfactory.admin;
 import com.bekololek.pluginfactory.admin.dto.*;
 import com.bekololek.pluginfactory.build.*;
 import com.bekololek.pluginfactory.common.exception.NotFoundException;
-import com.bekololek.pluginfactory.common.exception.ValidationException;
 import com.bekololek.pluginfactory.marketplace.MarketplaceListing;
 import com.bekololek.pluginfactory.marketplace.MarketplaceListingRepository;
 import com.bekololek.pluginfactory.marketplace.Purchase;
 import com.bekololek.pluginfactory.marketplace.PurchaseRepository;
-import com.bekololek.pluginfactory.plan.PlanDocumentRepository;
 import com.bekololek.pluginfactory.subscription.Subscription;
 import com.bekololek.pluginfactory.subscription.SubscriptionRepository;
 import com.bekololek.pluginfactory.subscription.Tier;
@@ -51,10 +49,7 @@ public class AdminService {
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final ApiKeyRepository apiKeyRepository;
-    private final PlanDocumentRepository planDocumentRepository;
-    private final ChatMessageService chatMessageService;
-    private final BuildSessionService buildSessionService;
-    private final BuildLauncher buildLauncher;
+    private final FailedBuildRecoveryService failedBuildRecoveryService;
 
     // ── Overview ──────────────────────────────────────────────────────
 
@@ -210,50 +205,8 @@ public class AdminService {
                 .toList();
     }
 
-    /**
-     * Re-runs the implementation/compilation pipeline for a FAILED session
-     * using its existing plan and the most recent error as fix-context. The
-     * user's original tokens stay charged; no new build slot is consumed
-     * (the FAILED transition already refunded one). Scope is locked: the
-     * implementer sees only the original plan + error message, never new
-     * user feedback, so it can only produce a fix — not new features.
-     */
-    @Transactional
     public BuildIteration recoverFailedBuild(UUID sessionId) {
-        BuildSession session = buildSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new NotFoundException("Build session not found"));
-
-        if (session.getStatus() != BuildStatus.FAILED) {
-            throw new ValidationException(
-                    "Only FAILED sessions can be recovered (current: " + session.getStatus() + ")");
-        }
-
-        if (planDocumentRepository.findBySessionId(sessionId).isEmpty()) {
-            throw new ValidationException(
-                    "Cannot recover: session has no approved plan to rebuild from");
-        }
-
-        BuildError latest = buildErrorRepository.findFirstBySessionIdOrderByCreatedAtDesc(sessionId);
-        String errorContext = latest != null ? latest.getMessage() : "Previous build failed.";
-        String phase = session.getCurrentPhase() != null ? session.getCurrentPhase().name() : "unknown";
-
-        chatMessageService.addMessage(sessionId, "system",
-                "ADMIN RECOVERY: previous build failed at phase " + phase + ":\n\n" +
-                        errorContext + "\n\n" +
-                        "Fix this issue. Do NOT add new features, change scope, or " +
-                        "introduce anything not already in the approved plan. Only repair " +
-                        "the failure described above.",
-                null, 0);
-
-        // Clear the FAILED-stamped completedAt so the next terminal transition
-        // records the actual recovery completion time.
-        session.setCompletedAt(null);
-        buildSessionRepository.save(session);
-
-        buildSessionService.updateStatus(sessionId, BuildStatus.BUILDING);
-        buildSessionService.updatePhase(sessionId, BuildPhase.IMPLEMENTATION);
-
-        return buildLauncher.startBuild(sessionId, "ADMIN_RECOVERY");
+        return failedBuildRecoveryService.adminRecover(sessionId);
     }
 
     private AdminErrorRecord toRecord(BuildError e) {
