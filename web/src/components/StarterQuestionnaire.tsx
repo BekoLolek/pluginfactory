@@ -24,6 +24,18 @@ export interface StarterQuestionnaireProps {
 // shows up in the composed message as a permissive statement.
 const DONT_CARE = '__dont_care__' as const;
 
+// Two-step version selector source-of-truth. Major versions descend from
+// newest; per-major sub-versions are listed in the order most users will
+// recognize ("latest first" within each major). Every entry must
+// correspond to a real `paper-api:<major>.<sub>-R0.1-SNAPSHOT` artifact
+// in PaperMC's repo — the value is templated into pom.xml verbatim, so
+// adding an unreleased version here will break builds.
+const VERSION_TREE: { major: string; subs: string[] }[] = [
+  { major: '1.21', subs: ['4', '3', '1'] },
+  { major: '1.20', subs: ['6', '4', '2', '1'] },
+  { major: '1.19', subs: ['4', '3', '2'] },
+];
+
 interface Question {
   id: string;
   label: string;
@@ -60,17 +72,9 @@ const QUESTIONS: Question[] = [
     id: 'version',
     label: 'Which Minecraft version?',
     helper:
-      'Pick the exact Paper release you target. This sets the paper-api Maven version, so it must be a real release — no wildcards.',
+      'Pick a major series, then the exact sub-version. This sets the paper-api Maven version, so it must be a real release — no wildcards.',
     required: true,
-    options: [
-      { value: '1.21.4', label: '1.21.4' },
-      { value: '1.21.3', label: '1.21.3' },
-      { value: '1.21.1', label: '1.21.1' },
-      { value: '1.20.6', label: '1.20.6' },
-      { value: '1.20.4', label: '1.20.4' },
-      { value: '1.20.1', label: '1.20.1' },
-      { value: '1.19.4', label: '1.19.4' },
-    ],
+    options: [], // rendered via VersionSelector, not the standard option grid
     render: (a) => `Minecraft version: ${a} (use exactly this paper-api version).`,
   },
   {
@@ -258,6 +262,23 @@ export default function StarterQuestionnaire({
 
           {QUESTIONS.map((q) => {
             const selected = answers[q.id];
+            if (q.id === 'version') {
+              return (
+                <fieldset key={q.id}>
+                  <legend className="text-sm font-medium text-slate-200 mb-1">
+                    {q.label}
+                  </legend>
+                  {q.helper && (
+                    <p className="text-xs text-slate-500 mb-2">{q.helper}</p>
+                  )}
+                  <VersionSelector
+                    value={selected}
+                    onChange={(v) => setAnswer(q.id, v)}
+                    disabled={disabled}
+                  />
+                </fieldset>
+              );
+            }
             return (
               <fieldset key={q.id}>
                 <legend className="text-sm font-medium text-slate-200 mb-1">
@@ -380,6 +401,93 @@ export default function StarterQuestionnaire({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Two-step version picker. Major series first, then sub-version.
+ *
+ * <p>State is derived from {@code value} (a full "1.21.4"-style string)
+ * rather than held locally, so the parent's answers map is the single
+ * source of truth. Changing the major resets the sub-version to the
+ * newest in that series — the user is never left in a "valid major,
+ * empty sub" intermediate state, so the answer is always either unset
+ * or fully specified.
+ */
+function VersionSelector({
+  value,
+  onChange,
+  disabled,
+}: {
+  value?: string;
+  onChange: (full: string) => void;
+  disabled?: boolean;
+}) {
+  const [selectedMajor, selectedSub] = (() => {
+    if (!value) return ['', ''];
+    const lastDot = value.lastIndexOf('.');
+    if (lastDot < 0) return [value, ''];
+    return [value.slice(0, lastDot), value.slice(lastDot + 1)];
+  })();
+
+  const subs =
+    VERSION_TREE.find((v) => v.major === selectedMajor)?.subs ?? [];
+
+  const selectClass =
+    'min-w-[7rem] rounded-lg bg-slate-900/80 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        aria-label="Major version"
+        value={selectedMajor}
+        disabled={disabled}
+        className={selectClass}
+        onChange={(e) => {
+          const major = e.target.value;
+          if (!major) {
+            onChange('');
+            return;
+          }
+          // Default to the newest sub-version of the chosen major so the
+          // user always lands in a valid, complete state on a single click.
+          const defaultSub =
+            VERSION_TREE.find((v) => v.major === major)?.subs[0] ?? '';
+          onChange(defaultSub ? `${major}.${defaultSub}` : '');
+        }}
+      >
+        <option value="">Major…</option>
+        {VERSION_TREE.map((v) => (
+          <option key={v.major} value={v.major}>
+            {v.major}.x
+          </option>
+        ))}
+      </select>
+
+      <select
+        aria-label="Sub version"
+        value={selectedSub}
+        disabled={disabled || !selectedMajor}
+        className={selectClass}
+        onChange={(e) => {
+          const sub = e.target.value;
+          onChange(sub ? `${selectedMajor}.${sub}` : '');
+        }}
+      >
+        <option value="">{selectedMajor ? 'Sub…' : '—'}</option>
+        {subs.map((sub) => (
+          <option key={sub} value={sub}>
+            {selectedMajor}.{sub}
+          </option>
+        ))}
+      </select>
+
+      {value && (
+        <span className="text-xs text-slate-400 ml-1">
+          → <code className="text-slate-200">paper-api:{value}-R0.1-SNAPSHOT</code>
+        </span>
+      )}
     </div>
   );
 }
