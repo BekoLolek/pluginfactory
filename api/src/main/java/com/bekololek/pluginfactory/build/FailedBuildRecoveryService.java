@@ -7,6 +7,7 @@ import com.bekololek.pluginfactory.plan.PlanDocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -39,14 +40,21 @@ public class FailedBuildRecoveryService {
     private final BuildSessionService buildSessionService;
     private final BuildLauncher buildLauncher;
 
-    @Transactional
+    // REQUIRES_NEW: AdminService is @Transactional(readOnly = true) at the
+    // class level, so AdminController -> AdminService.recoverFailedBuild
+    // runs inside a read-only transaction. Joining it (default REQUIRED)
+    // means the iteration INSERT gets discarded at commit and the async
+    // worker can't find the row. Suspending the outer tx and starting a
+    // fresh writable one fixes both recover paths regardless of caller
+    // context.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public BuildIteration adminRecover(UUID sessionId) {
         log.info("Admin recovery requested for session {}", sessionId);
         BuildSession session = loadAndValidate(sessionId, null);
         return doRecover(session, ADMIN_RECOVERY_TRIGGER);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public BuildIteration userRecover(UUID sessionId, UUID userId, int maxUserRetries) {
         log.info("User recovery requested for session {} by user {}", sessionId, userId);
         BuildSession session = loadAndValidate(sessionId, userId);
