@@ -70,6 +70,12 @@ public class BuildPipelineService {
     public void executeBuild(UUID sessionId, UUID iterationId) {
         MDC.put(MdcRequestFilter.SESSION_ID, sessionId.toString());
         try {
+            UUID ownerId = buildSessionService.getSessionById(sessionId).getUserId();
+            MDC.put(MdcRequestFilter.OWNER_ID, ownerId.toString());
+        } catch (Exception ignored) {
+            // Owner is best-effort for log correlation; never fail the build over it.
+        }
+        try {
             executeBuildInternal(sessionId, iterationId);
         } catch (Throwable t) {
             // Defense in depth: executeBuildInternal already catches
@@ -92,6 +98,7 @@ public class BuildPipelineService {
             }
         } finally {
             MDC.remove(MdcRequestFilter.SESSION_ID);
+            MDC.remove(MdcRequestFilter.OWNER_ID);
         }
     }
 

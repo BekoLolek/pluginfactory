@@ -30,6 +30,7 @@ public class MdcRequestFilter extends OncePerRequestFilter {
     public static final String REQUEST_ID = "requestId";
     public static final String USER_ID = "userId";
     public static final String SESSION_ID = "sessionId";
+    public static final String OWNER_ID = "ownerId";
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
     @Override
@@ -53,6 +54,7 @@ public class MdcRequestFilter extends OncePerRequestFilter {
             MDC.remove(REQUEST_ID);
             MDC.remove(USER_ID);
             MDC.remove(SESSION_ID);
+            MDC.remove(OWNER_ID);
         }
     }
 }
