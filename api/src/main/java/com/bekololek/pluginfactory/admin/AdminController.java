@@ -1,6 +1,8 @@
 package com.bekololek.pluginfactory.admin;
 
 import com.bekololek.pluginfactory.admin.dto.*;
+import com.bekololek.pluginfactory.build.BuildIteration;
+import com.bekololek.pluginfactory.build.dto.BuildIterationDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -113,5 +115,24 @@ public class AdminController {
     @GetMapping("/builds/{sessionId}/errors")
     public ResponseEntity<List<AdminErrorRecord>> getSessionErrors(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(adminService.getSessionErrors(sessionId));
+    }
+
+    /**
+     * Re-run a FAILED build using its existing plan + last error as
+     * fix-context. The user is not charged a new build slot and is not
+     * asked for input — this only repairs the failure.
+     */
+    @PostMapping("/builds/{sessionId}/recover")
+    public ResponseEntity<BuildIterationDto> recoverFailedBuild(@PathVariable UUID sessionId) {
+        BuildIteration iteration = adminService.recoverFailedBuild(sessionId);
+        return ResponseEntity.ok(new BuildIterationDto(
+                iteration.getId(),
+                iteration.getSessionId(),
+                iteration.getIterationNumber(),
+                iteration.getStatus(),
+                iteration.getTrigger(),
+                iteration.getStartedAt(),
+                iteration.getCompletedAt()
+        ));
     }
 }
