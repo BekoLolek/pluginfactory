@@ -3,6 +3,8 @@ package com.bekololek.pluginfactory.build;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.UUID;
 
@@ -59,15 +61,37 @@ public class BuildLauncher {
         iteration.setTrigger(trigger);
         iteration = buildIterationRepository.save(iteration);
 
+        final UUID iterationId = iteration.getId();
+        final int iterationNumberForLog = iteration.getIterationNumber();
+
         log.info(
                 "Launching build for session {} (iteration {}, trigger {})",
-                sessionId, iteration.getIterationNumber(), trigger
+                sessionId, iterationNumberForLog, trigger
         );
 
-        // Crosses the Spring proxy boundary, so @Async fires and this
-        // returns immediately. The worker picks up the iteration row
-        // by ID inside its own transaction.
-        buildPipelineService.executeBuild(sessionId, iteration.getId());
+        // If we're inside a transaction (e.g. FailedBuildRecoveryService is
+        // @Transactional), the iteration INSERT is buffered until commit.
+        // Firing the async worker before then would race: the worker reads
+        // in its own transaction and can't see uncommitted writes, so
+        // findById returns empty and the build dies with
+        // "Iteration not found for session".
+        //
+        // Defer the async kick-off to after-commit when a transaction is
+        // active; otherwise (e.g. IterationService.requestIteration, which
+        // isn't @Transactional and gets autocommit per save) just fire
+        // straight through.
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            buildPipelineService.executeBuild(sessionId, iterationId);
+                        }
+                    }
+            );
+        } else {
+            buildPipelineService.executeBuild(sessionId, iterationId);
+        }
 
         return iteration;
     }
