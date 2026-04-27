@@ -166,6 +166,25 @@ public class AdminService {
 
     // ── Builds ────────────────────────────────────────────────────────
 
+    public AdminBuildSummary getBuild(UUID sessionId) {
+        BuildSession b = buildSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new NotFoundException("Build session not found"));
+        String email = userRepository.findById(b.getUserId())
+                .map(User::getEmail).orElse("unknown");
+        TokenBudget tb = tokenBudgetRepository.findBySessionId(b.getId()).orElse(null);
+        long iterations = buildIterationRepository.countBySessionId(b.getId());
+        BuildError latest = buildErrorRepository.findFirstBySessionIdOrderByCreatedAtDesc(b.getId());
+        return new AdminBuildSummary(
+                b.getId(), email, b.getStatus().name(), b.getCurrentPhase().name(),
+                b.getComplexityScore(),
+                tb != null ? tb.getConsumedTokens() : 0,
+                (int) iterations,
+                b.getCreatedAt(), b.getCompletedAt(),
+                latest != null ? latest.getCategory() : null,
+                latest != null ? truncate(latest.getMessage(), 240) : null
+        );
+    }
+
     public Page<AdminBuildSummary> getBuilds(String status, UUID userId,
                                              Instant from, Instant to, Pageable pageable) {
         BuildStatus buildStatus = status != null ? BuildStatus.valueOf(status) : null;

@@ -53,6 +53,11 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getBuilds(status, userId, from, to, pageable));
     }
 
+    @GetMapping("/builds/{id}")
+    public ResponseEntity<AdminBuildSummary> getBuild(@PathVariable UUID id) {
+        return ResponseEntity.ok(adminService.getBuild(id));
+    }
+
     @GetMapping("/builds/stats")
     public ResponseEntity<BuildStatsResponse> getBuildStats(
             @RequestParam(required = false) Instant from,
