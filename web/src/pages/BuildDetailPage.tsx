@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import axios from 'axios';
 import {
   useBuild,
   useMessages,
@@ -8,7 +9,9 @@ import {
   usePlan,
   useBuildPolling,
   useIterate,
+  useRecoverBuild,
 } from '@/hooks/useBuilds';
+import { useToastStore } from '@/stores/toastStore';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
 import TokenBudgetBar from '@/components/TokenBudgetBar';
@@ -45,6 +48,8 @@ export default function BuildDetailPage() {
   const { data: plan } = usePlan(sessionId);
   const sendMessage = useSendMessage(sessionId);
   const iterateMutation = useIterate(sessionId);
+  const recoverMutation = useRecoverBuild(sessionId);
+  const addToast = useToastStore((s) => s.addToast);
 
   // Poll build during active build/test phases
   useBuildPolling(sessionId);
@@ -130,6 +135,25 @@ export default function BuildDetailPage() {
   const handleQuestionnaireSubmit = (content: string) => {
     setChatStarted(true);
     sendMessage.mutate(content);
+  };
+
+  const handleRecover = () => {
+    recoverMutation.mutate(undefined, {
+      onSuccess: () => {
+        addToast('success', 'Retry started — fixing the previous failure.');
+      },
+      onError: (err: unknown) => {
+        // Backend returns 403 with the cap-hit message, 400 with a
+        // validation message. Surface the server's text directly so the
+        // user sees the real reason.
+        let msg = 'Could not retry this build.';
+        if (axios.isAxiosError(err)) {
+          const data = err.response?.data as { message?: string } | undefined;
+          if (data?.message) msg = data.message;
+        }
+        addToast('error', msg);
+      },
+    });
   };
 
   return (
@@ -356,6 +380,50 @@ export default function BuildDetailPage() {
         {isFailed && (
           <div className="flex-1">
             <BuildProgressPanel session={build} />
+
+            {/* Retry panel: only meaningful when a plan exists. Sessions
+                that died in CLARIFICATION/PLAN_GENERATION have no plan to
+                rebuild from, so show a "start over" CTA instead. */}
+            {plan ? (
+              <div className="mt-4 p-5 rounded-xl bg-slate-900 border border-slate-800">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-white">
+                      Retry build
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+                      Re-runs the build using the existing plan and the last
+                      error as fix-context. No new features will be added —
+                      this only repairs the failure. Tokens already spent
+                      stay charged; no new build slot is consumed. Limited
+                      to 2 attempts per session.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRecover}
+                    disabled={recoverMutation.isPending}
+                    className="shrink-0 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+                  >
+                    {recoverMutation.isPending ? 'Retrying…' : 'Retry build'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 p-5 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                <p className="text-sm text-slate-400">
+                  This session failed before a plan was approved, so it
+                  can't be auto-retried.
+                </p>
+                <Link
+                  to="/dashboard/builds/new"
+                  className="inline-block mt-3 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Start a new build
+                </Link>
+              </div>
+            )}
+
             {plan && (
               <div className="mt-4">
                 <PlanReviewPanel

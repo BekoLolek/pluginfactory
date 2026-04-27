@@ -17,6 +17,7 @@ import {
   requestIteration,
   getArtifacts,
   deleteBuild,
+  recoverBuild,
 } from '@/api/builds';
 import type { BuildSession, ChatMessage } from '@/types';
 
@@ -201,6 +202,22 @@ export function useIterate(sessionId: string) {
       void queryClient.invalidateQueries({ queryKey: ['build', sessionId] });
       void queryClient.invalidateQueries({
         queryKey: ['messages', sessionId],
+      });
+    },
+  });
+}
+
+export function useRecoverBuild(sessionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => recoverBuild(sessionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['build', sessionId] });
+      void queryClient.invalidateQueries({
+        queryKey: ['messages', sessionId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['iterations', sessionId],
       });
     },
   });

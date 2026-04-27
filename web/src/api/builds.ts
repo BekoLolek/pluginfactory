@@ -104,6 +104,15 @@ export async function deleteBuild(sessionId: string): Promise<void> {
   await client.delete(`/api/v1/builds/${sessionId}`);
 }
 
+export async function recoverBuild(
+  sessionId: string,
+): Promise<BuildIteration> {
+  const { data } = await client.post<BuildIteration>(
+    `/api/v1/builds/${sessionId}/recover`,
+  );
+  return data;
+}
+
 export async function getArtifacts(sessionId: string): Promise<Artifact[]> {
   const { data } = await client.get<Artifact[]>(
     `/api/v1/builds/${sessionId}/artifacts`,
