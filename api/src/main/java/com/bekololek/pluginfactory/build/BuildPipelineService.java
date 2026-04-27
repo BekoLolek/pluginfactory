@@ -193,6 +193,20 @@ public class BuildPipelineService {
         containerSessionRepository.save(containerSession);
 
         try {
+            // Wipe the workspace before copying new sources. The build
+            // container is pooled and reused across sessions, so leftover
+            // .java files from a previous build (different plugin name,
+            // different class names) get compiled alongside the new ones
+            // and cause "incompatible types" errors when the new code
+            // references its own main class but the old listener still
+            // expects the previous one. `mvn clean` only nukes target/.
+            //
+            // -mindepth 1 keeps /plugin-workspace itself; -delete removes
+            // files and emptied dirs in one pass. Portable across the
+            // container's /bin/sh (dash), not bash-specific.
+            dockerService.executeCommand(containerId,
+                    "sh", "-c", "find /plugin-workspace -mindepth 1 -delete 2>/dev/null || true");
+
             // Create tar archive and copy to container
             byte[] tarArchive = createTarArchive(files);
             dockerService.copyToContainer(containerId, tarArchive, "/plugin-workspace");
