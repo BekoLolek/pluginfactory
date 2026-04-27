@@ -36,11 +36,17 @@ public class AnthropicClient {
         this.apiKey = apiKey;
     }
 
+    public AnthropicResponse sendMessage(String model, String systemPrompt,
+                                          List<Map<String, String>> messages, int maxTokens) {
+        return sendMessage(model, systemPrompt, messages, maxTokens, null);
+    }
+
     @io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker(name = "anthropic", fallbackMethod = "fallback")
     @io.github.resilience4j.retry.annotation.Retry(name = "anthropic")
     @SuppressWarnings("unchecked")
     public AnthropicResponse sendMessage(String model, String systemPrompt,
-                                          List<Map<String, String>> messages, int maxTokens) {
+                                          List<Map<String, String>> messages, int maxTokens,
+                                          Double temperature) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("x-api-key", apiKey);
@@ -51,6 +57,9 @@ public class AnthropicClient {
         body.put("max_tokens", maxTokens);
         body.put("system", systemPrompt);
         body.put("messages", messages);
+        if (temperature != null) {
+            body.put("temperature", temperature);
+        }
 
         ResponseEntity<Map> response = restTemplate.postForEntity(
                 ANTHROPIC_API_URL, new HttpEntity<>(body, headers), Map.class);
@@ -67,6 +76,7 @@ public class AnthropicClient {
 
     private AnthropicResponse fallback(String model, String systemPrompt,
                                         List<Map<String, String>> messages, int maxTokens,
+                                        Double temperature,
                                         Exception e) {
         log.error("Anthropic API unavailable, circuit breaker triggered", e);
         throw new RuntimeException("AI service temporarily unavailable. Please try again in a moment.");

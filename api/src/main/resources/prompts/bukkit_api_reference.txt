@@ -1,0 +1,124 @@
+## Bukkit/Paper API Reference (authoritative — use these exact signatures)
+
+You MUST only call methods listed below or that you can verify from the standard
+Bukkit API. If you are tempted to call a method not in this reference, prefer
+a documented alternative or use Bukkit.getPluginManager() / HandlerList directly.
+
+### Plugin Lifecycle (org.bukkit.plugin.java.JavaPlugin)
+- void onEnable()
+- void onDisable()
+- void onLoad()
+- FileConfiguration getConfig()
+- void saveDefaultConfig()
+- void saveConfig()
+- void reloadConfig()
+- Logger getLogger()
+- PluginManager getServer().getPluginManager()
+- BukkitScheduler getServer().getScheduler()
+- File getDataFolder()
+- PluginCommand getCommand(String name)   // null if not in plugin.yml
+
+### Event Registration (THE most common hallucination)
+- pluginManager.registerEvents(Listener listener, Plugin plugin)   // CORRECT
+- HandlerList.getRegisteredListeners(Plugin plugin) -> RegisteredListener[]   // STATIC method on HandlerList
+- HandlerList.unregisterAll(Plugin plugin)
+- HandlerList.unregisterAll(Listener listener)
+- PluginManager does NOT have getRegisteredListeners — that's on HandlerList only.
+- Annotate handlers with @org.bukkit.event.EventHandler. Optional priority + ignoreCancelled.
+
+### Scheduling (org.bukkit.scheduler.BukkitScheduler)
+Always: BukkitScheduler scheduler = Bukkit.getScheduler();
+- scheduler.runTask(Plugin, Runnable)                          // sync, next tick
+- scheduler.runTaskLater(Plugin, Runnable, long delayTicks)
+- scheduler.runTaskTimer(Plugin, Runnable, long delay, long period)
+- scheduler.runTaskAsynchronously(Plugin, Runnable)            // off main thread
+- scheduler.runTaskLaterAsynchronously(Plugin, Runnable, long)
+- scheduler.runTaskTimerAsynchronously(Plugin, Runnable, long, long)
+- scheduler.cancelTasks(Plugin)
+- BukkitTask returned objects expose .cancel() and .getTaskId().
+- IMPORTANT: NEVER touch Bukkit world/entity/player state from an async task.
+  Wrap Bukkit calls inside scheduler.runTask(plugin, () -> { ... }).
+
+### Players (org.bukkit.entity.Player extends OfflinePlayer)
+- Bukkit.getPlayer(UUID id)             // online only, may return null
+- Bukkit.getPlayerExact(String name)    // online only, exact match
+- Bukkit.getOfflinePlayer(UUID id)      // never null, may have never joined
+- Bukkit.getOnlinePlayers() -> Collection<? extends Player>
+- player.getUniqueId(), player.getName(), player.getDisplayName()
+- player.sendMessage(String) or player.sendMessage(Component) (Paper)
+- player.hasPermission(String node) -> boolean
+- player.getInventory() -> PlayerInventory
+- player.getLocation(), player.getWorld()
+- player.teleport(Location) / player.teleport(Entity)
+- player.kickPlayer(String) is deprecated in Paper — use player.kick(Component)
+- DO NOT compare players with == — use player.getUniqueId().equals(other.getUniqueId())
+- DO NOT store Player references long-term — store UUID and resolve on use.
+
+### Commands (org.bukkit.command.CommandExecutor)
+- boolean onCommand(CommandSender sender, Command command, String label, String[] args)
+- sender instanceof Player  → cast required to access player methods
+- sender.sendMessage(String)
+- In onEnable: getCommand("name").setExecutor(this) — getCommand returns null
+  if the command isn't declared in plugin.yml, so null-check or you NPE.
+
+### Inventory & GUIs (org.bukkit.inventory.*)
+- Bukkit.createInventory(InventoryHolder holder, int size, String title)
+  size MUST be a multiple of 9 between 9 and 54.
+- Bukkit.createInventory(InventoryHolder holder, InventoryType type, String title)
+- inventory.setItem(int slot, ItemStack item)
+- inventory.getItem(int slot) -> ItemStack (may be null or AIR)
+- player.openInventory(Inventory inventory) -> InventoryView
+- For GUIs: implement Listener, handle InventoryClickEvent.
+  - event.getInventory() — the top inventory
+  - event.getClickedInventory() — which one was clicked (may be null)
+  - event.getCurrentItem() — what was clicked
+  - event.setCancelled(true) to prevent item removal
+  - event.getWhoClicked() returns HumanEntity; cast to Player if needed
+
+### ItemStack (org.bukkit.inventory.ItemStack)
+- new ItemStack(Material material)
+- new ItemStack(Material material, int amount)
+- itemStack.getItemMeta() -> ItemMeta (always set it back: itemStack.setItemMeta(meta))
+- meta.setDisplayName(String) — deprecated in Paper, use meta.displayName(Component)
+- meta.setLore(List<String>) — deprecated in Paper, use meta.lore(List<Component>)
+- For broad compat keep the legacy String API unless using Paper-only Component pipeline.
+
+### Configuration (org.bukkit.configuration.file.FileConfiguration)
+- config.getString(String path), getString(path, default)
+- config.getInt, getDouble, getBoolean, getLong (each with default overload)
+- config.getStringList(String path) -> List<String>
+- config.getConfigurationSection(String path) -> ConfigurationSection (nullable)
+- config.set(String path, Object value)
+- config.contains(String path)
+- After mutation: plugin.saveConfig()
+
+### Locations & Worlds (org.bukkit.Location, org.bukkit.World)
+- new Location(World world, double x, double y, double z)
+- new Location(World world, double x, double y, double z, float yaw, float pitch)
+- Bukkit.getWorld(String name) -> World (nullable)
+- Bukkit.getWorld(UUID id) -> World (nullable)
+- world.getBlockAt(Location), world.getBlockAt(int x, int y, int z)
+- block.getType() -> Material, block.setType(Material)
+- block.getLocation(), block.getWorld()
+
+### Bans (the original failing plugin domain)
+- Bukkit.getBanList(BanList.Type.NAME) -> BanList<PlayerProfile>   // Paper
+- Bukkit.getBanList(BanList.Type.IP) -> BanList<InetAddress>
+- banList.addBan(target, String reason, Date expires, String source)
+- banList.pardon(target)
+- banList.isBanned(target)
+- banList.getBanEntries() -> Set<? extends BanEntry>
+- For temp bans, pass a Date; for permanent, pass null.
+
+### Common Pitfalls — DO NOT
+- DO NOT call PluginManager.getRegisteredListeners(plugin) — does not exist.
+  Use HandlerList.getRegisteredListeners(plugin) (static).
+- DO NOT call Bukkit/world/entity/inventory APIs from an async task.
+- DO NOT use NMS (net.minecraft.server.*) or CraftBukkit internals.
+- DO NOT use reflection, Runtime.exec, ProcessBuilder, or any system I/O.
+- DO NOT compare Players with == ; compare UUIDs.
+- DO NOT cache Player references across logout.
+- DO NOT call event.setCancelled(true) on an event that is not Cancellable.
+- DO NOT register the same Listener twice (check for double-register on reload).
+- DO NOT use deprecated PlayerInteractEvent.getPlayer() workarounds — it exists.
+- DO NOT assume getCommand(name) is non-null — check plugin.yml registration.

@@ -40,7 +40,7 @@ public class ImplementerAgent {
         this.templateService = templateService;
         this.planDocumentRepository = planDocumentRepository;
         this.objectMapper = objectMapper;
-        this.systemPrompt = loadSystemPrompt();
+        this.systemPrompt = loadSystemPrompt() + "\n\n" + loadResource("prompts/bukkit_api_reference.txt", "");
     }
 
     public ImplementationResult implement(UUID sessionId) {
@@ -56,12 +56,13 @@ public class ImplementerAgent {
         // Call AI to generate implementation
         String model = modelRouter.selectModel(ModelRouter.TaskType.CODE_GENERATION);
         int maxTokens = modelRouter.getMaxTokens(ModelRouter.TaskType.CODE_GENERATION);
+        Double temperature = modelRouter.getTemperature(ModelRouter.TaskType.CODE_GENERATION);
 
         List<Map<String, String>> messages = List.of(
                 Map.of("role", "user", "content", userMessage)
         );
 
-        AnthropicResponse response = anthropicClient.sendMessage(model, systemPrompt, messages, maxTokens);
+        AnthropicResponse response = anthropicClient.sendMessage(model, systemPrompt, messages, maxTokens, temperature);
         int tokensUsed = response.inputTokens() + response.outputTokens();
 
         // Parse the AI response as a file map
@@ -131,15 +132,20 @@ public class ImplementerAgent {
     }
 
     private String loadSystemPrompt() {
+        return loadResource("prompts/implementer_system.txt",
+                "You are a Minecraft plugin developer. Generate Java code for Paper plugins. " +
+                        "Respond with a JSON object mapping file paths to file contents.");
+    }
+
+    private String loadResource(String path, String fallback) {
         try {
-            ClassPathResource resource = new ClassPathResource("prompts/implementer_system.txt");
+            ClassPathResource resource = new ClassPathResource(path);
             try (InputStream is = resource.getInputStream()) {
                 return new String(is.readAllBytes(), StandardCharsets.UTF_8);
             }
         } catch (IOException e) {
-            log.warn("Failed to load implementer system prompt, using default");
-            return "You are a Minecraft plugin developer. Generate Java code for Paper plugins. " +
-                    "Respond with a JSON object mapping file paths to file contents.";
+            log.warn("Failed to load {}, using fallback", path);
+            return fallback;
         }
     }
 }
