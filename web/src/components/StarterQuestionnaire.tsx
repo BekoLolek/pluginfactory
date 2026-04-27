@@ -31,6 +31,13 @@ interface Question {
   options: { value: string; label: string }[];
   /** How the answer is phrased in the final composed message. */
   render: (answer: string) => string | null;
+  /**
+   * If true, suppress the "Doesn't matter" button for this question.
+   * Used for fields that get templated into pom.xml verbatim — a vague
+   * answer like "1.21.x" leaks into the Maven coordinates and breaks
+   * the build. The user can still skip the whole questionnaire.
+   */
+  required?: boolean;
 }
 
 const QUESTIONS: Question[] = [
@@ -52,18 +59,19 @@ const QUESTIONS: Question[] = [
   {
     id: 'version',
     label: 'Which Minecraft version?',
+    helper:
+      'Pick the exact Paper release you target. This sets the paper-api Maven version, so it must be a real release — no wildcards.',
+    required: true,
     options: [
-      { value: '1.21', label: '1.21.x' },
-      { value: '1.20', label: '1.20.x' },
-      { value: '1.19', label: '1.19.x' },
-      { value: 'older', label: 'Something older' },
+      { value: '1.21.4', label: '1.21.4' },
+      { value: '1.21.3', label: '1.21.3' },
+      { value: '1.21.1', label: '1.21.1' },
+      { value: '1.20.6', label: '1.20.6' },
+      { value: '1.20.4', label: '1.20.4' },
+      { value: '1.20.1', label: '1.20.1' },
+      { value: '1.19.4', label: '1.19.4' },
     ],
-    render: (a) =>
-      a === DONT_CARE
-        ? 'Minecraft version: no strong preference.'
-        : a === 'older'
-          ? 'Minecraft version: something older than 1.19.'
-          : `Minecraft version: ${a}.x.`,
+    render: (a) => `Minecraft version: ${a} (use exactly this paper-api version).`,
   },
   {
     id: 'category',
@@ -277,19 +285,21 @@ export default function StarterQuestionnaire({
                       </button>
                     );
                   })}
-                  <button
-                    type="button"
-                    onClick={() => setAnswer(q.id, DONT_CARE)}
-                    disabled={disabled}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-                      selected === DONT_CARE
-                        ? 'bg-slate-600 border-slate-500 text-white'
-                        : 'bg-transparent border-dashed border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                    title="Skip this question"
-                  >
-                    Doesn't matter
-                  </button>
+                  {!q.required && (
+                    <button
+                      type="button"
+                      onClick={() => setAnswer(q.id, DONT_CARE)}
+                      disabled={disabled}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                        selected === DONT_CARE
+                          ? 'bg-slate-600 border-slate-500 text-white'
+                          : 'bg-transparent border-dashed border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      title="Skip this question"
+                    >
+                      Doesn't matter
+                    </button>
+                  )}
                 </div>
               </fieldset>
             );
