@@ -158,6 +158,29 @@ public class SubscriptionService {
         subscriptionRepository.save(subscription);
     }
 
+    /**
+     * Credit tokens back to the user's monthly pool. Used by admin token
+     * refunds against a specific build session — the per-session ledger
+     * (TokenBudget.refundedAt) is the source of truth for "has this been
+     * refunded already"; this method just moves the counter.
+     *
+     * <p>Clamped at 0 so a refund larger than current usage (e.g. usage
+     * counters were reset by the monthly cron between consume and refund)
+     * never produces negative usage.
+     */
+    @Transactional
+    public void refundTokens(UUID userId, int tokens) {
+        if (tokens <= 0) {
+            return;
+        }
+        Subscription subscription = getCurrentSubscription(userId);
+        int current = subscription.getTokensUsedThisPeriod();
+        int updated = Math.max(0, current - tokens);
+        subscription.setTokensUsedThisPeriod(updated);
+        subscriptionRepository.save(subscription);
+        log.info("Refunded {} tokens for user {} ({} → {})", tokens, userId, current, updated);
+    }
+
     @Scheduled(cron = "0 0 0 1 * *")
     @Transactional
     public void resetUsageCounts() {

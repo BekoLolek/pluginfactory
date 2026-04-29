@@ -5,10 +5,12 @@ import com.bekololek.pluginfactory.subscription.SubscriptionService;
 import com.bekololek.pluginfactory.subscription.Tier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,6 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -158,6 +163,95 @@ class TokenBudgetServiceTest {
         when(tokenBudgetRepository.findBySessionId(sessionId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> tokenBudgetService.getRemainingBudget(sessionId))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessage("Token budget not found");
+    }
+
+    @Test
+    void refundSessionTokens_creditsUserAndStampsRefund() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        TokenBudget budget = createBudget(sessionId, 10_000, 1_250);
+        budget.setUserId(userId);
+        when(tokenBudgetRepository.findBySessionId(sessionId)).thenReturn(Optional.of(budget));
+        when(tokenBudgetRepository.save(any(TokenBudget.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        int refunded = tokenBudgetService.refundSessionTokens(sessionId);
+
+        assertThat(refunded).isEqualTo(1_250);
+        verify(subscriptionService).refundTokens(userId, 1_250);
+        ArgumentCaptor<TokenBudget> captor = ArgumentCaptor.forClass(TokenBudget.class);
+        verify(tokenBudgetRepository).save(captor.capture());
+        TokenBudget saved = captor.getValue();
+        assertThat(saved.getRefundedAt()).isNotNull();
+        assertThat(saved.getRefundedAmount()).isEqualTo(1_250);
+    }
+
+    @Test
+    void refundSessionTokens_isIdempotent() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        TokenBudget budget = createBudget(sessionId, 10_000, 1_250);
+        budget.setUserId(userId);
+        // Simulate prior refund.
+        budget.setRefundedAt(Instant.now().minusSeconds(60));
+        budget.setRefundedAmount(1_250);
+        when(tokenBudgetRepository.findBySessionId(sessionId)).thenReturn(Optional.of(budget));
+
+        int refunded = tokenBudgetService.refundSessionTokens(sessionId);
+
+        assertThat(refunded).isEqualTo(1_250);
+        // No second debit on the user; no state change written.
+        verify(subscriptionService, never()).refundTokens(any(), anyInt());
+        verify(tokenBudgetRepository, never()).save(any(TokenBudget.class));
+    }
+
+    @Test
+    void refundSessionTokens_zeroConsumedStillStampsRefund() {
+        // A session that died before any LLM call still gets the refund
+        // marker so a future call doesn't keep "trying" to refund a zero.
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        TokenBudget budget = createBudget(sessionId, 10_000, 0);
+        budget.setUserId(userId);
+        when(tokenBudgetRepository.findBySessionId(sessionId)).thenReturn(Optional.of(budget));
+        when(tokenBudgetRepository.save(any(TokenBudget.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        int refunded = tokenBudgetService.refundSessionTokens(sessionId);
+
+        assertThat(refunded).isEqualTo(0);
+        // No debit because there's nothing to refund — but the budget row
+        // is still stamped so this becomes a no-op next time.
+        verify(subscriptionService, never()).refundTokens(any(), anyInt());
+        ArgumentCaptor<TokenBudget> captor = ArgumentCaptor.forClass(TokenBudget.class);
+        verify(tokenBudgetRepository).save(captor.capture());
+        assertThat(captor.getValue().getRefundedAt()).isNotNull();
+        assertThat(captor.getValue().getRefundedAmount()).isEqualTo(0);
+    }
+
+    @Test
+    void refundSessionTokens_skipsSubscriptionCallWhenUserIdNull() {
+        // Some legacy budgets pre-V11 have null userId; refund should still
+        // stamp the row but must not crash trying to credit a nonexistent
+        // subscription.
+        UUID sessionId = UUID.randomUUID();
+        TokenBudget budget = createBudget(sessionId, 10_000, 500);
+        budget.setUserId(null);
+        when(tokenBudgetRepository.findBySessionId(sessionId)).thenReturn(Optional.of(budget));
+        when(tokenBudgetRepository.save(any(TokenBudget.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        int refunded = tokenBudgetService.refundSessionTokens(sessionId);
+
+        assertThat(refunded).isEqualTo(500);
+        verify(subscriptionService, never()).refundTokens(any(), eq(500));
+    }
+
+    @Test
+    void refundSessionTokens_throwsWhenBudgetMissing() {
+        UUID sessionId = UUID.randomUUID();
+        when(tokenBudgetRepository.findBySessionId(sessionId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> tokenBudgetService.refundSessionTokens(sessionId))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessage("Token budget not found");
     }

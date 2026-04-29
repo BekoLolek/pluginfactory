@@ -3,10 +3,12 @@ package com.bekololek.pluginfactory.admin;
 import com.bekololek.pluginfactory.admin.dto.*;
 import com.bekololek.pluginfactory.build.*;
 import com.bekololek.pluginfactory.common.exception.NotFoundException;
+import com.bekololek.pluginfactory.common.exception.ValidationException;
 import com.bekololek.pluginfactory.marketplace.MarketplaceListing;
 import com.bekololek.pluginfactory.marketplace.MarketplaceListingRepository;
 import com.bekololek.pluginfactory.marketplace.Purchase;
 import com.bekololek.pluginfactory.marketplace.PurchaseRepository;
+import com.bekololek.pluginfactory.plan.PlanDocumentRepository;
 import com.bekololek.pluginfactory.subscription.Subscription;
 import com.bekololek.pluginfactory.subscription.SubscriptionRepository;
 import com.bekololek.pluginfactory.subscription.Tier;
@@ -24,6 +26,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -50,6 +53,9 @@ public class AdminService {
     private final TeamMemberRepository teamMemberRepository;
     private final ApiKeyRepository apiKeyRepository;
     private final FailedBuildRecoveryService failedBuildRecoveryService;
+    private final PlanDocumentRepository planDocumentRepository;
+    private final BuildSessionService buildSessionService;
+    private final TokenBudgetService tokenBudgetService;
 
     // ── Overview ──────────────────────────────────────────────────────
 
@@ -226,6 +232,105 @@ public class AdminService {
 
     public BuildIteration recoverFailedBuild(UUID sessionId) {
         return failedBuildRecoveryService.adminRecover(sessionId);
+    }
+
+    /**
+     * Refund the LLM tokens consumed by a single build session back to
+     * the user's monthly pool. Idempotent — calling twice yields the
+     * same {@code refundedAmount} and only debits the user once.
+     *
+     * <p>Note: REQUIRES_NEW because this class is read-only by default;
+     * we need a writable transaction for the {@link TokenBudget} update
+     * and the user's subscription decrement to commit.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public TokenRefundResponse refundTokens(UUID sessionId) {
+        if (buildSessionRepository.findById(sessionId).isEmpty()) {
+            throw new NotFoundException("Build session not found");
+        }
+        TokenBudget before = tokenBudgetRepository.findBySessionId(sessionId)
+                .orElseThrow(() -> new NotFoundException("Token budget not found"));
+        boolean alreadyRefunded = before.getRefundedAt() != null;
+        int amount = tokenBudgetService.refundSessionTokens(sessionId);
+        TokenBudget after = tokenBudgetRepository.findBySessionId(sessionId)
+                .orElseThrow(() -> new NotFoundException("Token budget not found"));
+        return new TokenRefundResponse(sessionId, amount, alreadyRefunded, after.getRefundedAt());
+    }
+
+    /**
+     * Move a FAILED session back into an actionable state.
+     *
+     * <p>Routing depends on what artifacts exist:
+     * <ul>
+     *   <li>Plan + at least one iteration → re-run the implementation/
+     *       compile pipeline via the existing recovery path. Same
+     *       behaviour as {@link #recoverFailedBuild}.</li>
+     *   <li>Plan but no iterations → reset to PLANNING/PLAN_REVIEW.
+     *       This is the typical state of sessions killed by the old
+     *       PLAN_REVIEW reaper bug: the plan is durable, the user just
+     *       needs to come back and approve it.</li>
+     *   <li>No plan → reset to CHATTING/CLARIFICATION so the user can
+     *       resume the conversation that was in progress.</li>
+     * </ul>
+     *
+     * <p>Tokens already consumed are NOT refunded by this call —
+     * {@link #refundTokens} is a separate explicit action so an admin
+     * can choose retrigger, refund, or both.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public RetriggerResponse retriggerFailedBuild(UUID sessionId) {
+        BuildSession session = buildSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new NotFoundException("Build session not found"));
+        if (session.getStatus() != BuildStatus.FAILED) {
+            throw new ValidationException(
+                    "Only FAILED sessions can be retriggered (current: " + session.getStatus() + ")");
+        }
+
+        boolean hasPlan = planDocumentRepository.findBySessionId(sessionId).isPresent();
+        long iterationCount = buildIterationRepository.countBySessionId(sessionId);
+
+        if (hasPlan && iterationCount > 0) {
+            // Existing pipeline-rerun path: delegate to FailedBuildRecoveryService
+            // which creates a new iteration and kicks the async build worker.
+            BuildIteration iteration = failedBuildRecoveryService.adminRecover(sessionId);
+            return new RetriggerResponse(
+                    sessionId,
+                    "PIPELINE_RESTARTED",
+                    BuildStatus.BUILDING.name(),
+                    BuildPhase.IMPLEMENTATION.name(),
+                    iteration.getIterationNumber()
+            );
+        }
+
+        if (hasPlan) {
+            // Plan exists but build never started. Hand the session back
+            // to the user at the plan-review gate so they can approve.
+            session.setCompletedAt(null);
+            buildSessionRepository.save(session);
+            buildSessionService.updateStatus(sessionId, BuildStatus.PLANNING);
+            buildSessionService.updatePhase(sessionId, BuildPhase.PLAN_REVIEW);
+            return new RetriggerResponse(
+                    sessionId,
+                    "RESET_TO_PLAN_REVIEW",
+                    BuildStatus.PLANNING.name(),
+                    BuildPhase.PLAN_REVIEW.name(),
+                    null
+            );
+        }
+
+        // No plan was ever generated — drop back into the chat phase so
+        // the user can keep refining requirements.
+        session.setCompletedAt(null);
+        buildSessionRepository.save(session);
+        buildSessionService.updateStatus(sessionId, BuildStatus.CHATTING);
+        buildSessionService.updatePhase(sessionId, BuildPhase.CLARIFICATION);
+        return new RetriggerResponse(
+                sessionId,
+                "RESET_TO_CLARIFICATION",
+                BuildStatus.CHATTING.name(),
+                BuildPhase.CLARIFICATION.name(),
+                null
+        );
     }
 
     private AdminErrorRecord toRecord(BuildError e) {

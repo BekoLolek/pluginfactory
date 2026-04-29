@@ -140,4 +140,25 @@ public class AdminController {
                 iteration.getCompletedAt()
         ));
     }
+
+    /**
+     * Refund the LLM tokens consumed by this session back to the user's
+     * monthly pool. Idempotent. Returns the credited amount and a flag
+     * indicating whether the call was a no-op (already refunded).
+     */
+    @PostMapping("/builds/{sessionId}/refund-tokens")
+    public ResponseEntity<TokenRefundResponse> refundTokens(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(adminService.refundTokens(sessionId));
+    }
+
+    /**
+     * Move a FAILED session back to an actionable state. Behaviour
+     * depends on which artifacts exist — see {@link RetriggerResponse}
+     * for the three possible outcomes (pipeline restart vs. reset to
+     * plan-review vs. reset to clarification).
+     */
+    @PostMapping("/builds/{sessionId}/retrigger")
+    public ResponseEntity<RetriggerResponse> retrigger(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(adminService.retriggerFailedBuild(sessionId));
+    }
 }

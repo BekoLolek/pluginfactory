@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -43,4 +44,20 @@ public class TokenBudget extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "threshold_status", nullable = false)
     private ThresholdStatus thresholdStatus = ThresholdStatus.NORMAL;
+
+    /**
+     * Set the moment an admin refunds this session's tokens. Acts as the
+     * idempotency guard: a non-null value means {@code refundedAmount}
+     * has already been credited back to the user's monthly pool, so
+     * subsequent refund calls must be no-ops.
+     */
+    @Column(name = "refunded_at")
+    private Instant refundedAt;
+
+    /**
+     * Tokens credited back to the user when this session was refunded.
+     * Equals {@code consumedTokens} at refund time. Null until refunded.
+     */
+    @Column(name = "refunded_amount")
+    private Integer refundedAmount;
 }

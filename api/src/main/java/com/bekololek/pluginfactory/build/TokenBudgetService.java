@@ -4,12 +4,15 @@ import com.bekololek.pluginfactory.common.exception.NotFoundException;
 import com.bekololek.pluginfactory.subscription.SubscriptionService;
 import com.bekololek.pluginfactory.subscription.Tier;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class TokenBudgetService {
 
@@ -77,5 +80,38 @@ public class TokenBudgetService {
         TokenBudget budget = tokenBudgetRepository.findBySessionId(sessionId)
                 .orElseThrow(() -> new NotFoundException("Token budget not found"));
         return budget.getConsumedTokens() + estimatedTokens <= budget.getAllocatedTokens();
+    }
+
+    /**
+     * Refund the tokens consumed by a single session back to the user's
+     * monthly pool. Idempotent: a session that has already been refunded
+     * (TokenBudget.refundedAt non-null) returns the original refund
+     * amount without touching the user's usage counter again.
+     *
+     * <p>Returns the number of tokens credited back. Zero is a valid
+     * result if the session never consumed any tokens (e.g. failed
+     * during CLARIFICATION before any LLM call).
+     */
+    @Transactional
+    public int refundSessionTokens(UUID sessionId) {
+        TokenBudget budget = tokenBudgetRepository.findBySessionId(sessionId)
+                .orElseThrow(() -> new NotFoundException("Token budget not found"));
+
+        if (budget.getRefundedAt() != null) {
+            log.info("Token refund already applied for session {} (amount={})",
+                    sessionId, budget.getRefundedAmount());
+            return budget.getRefundedAmount() != null ? budget.getRefundedAmount() : 0;
+        }
+
+        int refund = budget.getConsumedTokens();
+        if (refund > 0 && budget.getUserId() != null) {
+            subscriptionService.refundTokens(budget.getUserId(), refund);
+        }
+
+        budget.setRefundedAt(Instant.now());
+        budget.setRefundedAmount(refund);
+        tokenBudgetRepository.save(budget);
+        log.info("Refunded {} tokens for session {}", refund, sessionId);
+        return refund;
     }
 }
