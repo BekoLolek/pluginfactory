@@ -25,9 +25,10 @@ public interface BuildSessionRepository extends JpaRepository<BuildSession, UUID
 
     List<BuildSession> findByWorkspaceId(UUID workspaceId);
 
-    List<BuildSession> findByStatusIn(List<BuildStatus> statuses);
+    List<BuildSession> findByStatusInAndCurrentPhaseNot(List<BuildStatus> statuses, BuildPhase excludedPhase);
 
-    List<BuildSession> findByStatusInAndUpdatedAtBefore(List<BuildStatus> statuses, Instant cutoff);
+    List<BuildSession> findByStatusInAndCurrentPhaseNotAndUpdatedAtBefore(
+            List<BuildStatus> statuses, BuildPhase excludedPhase, Instant cutoff);
 
     long countByCreatedAtAfter(Instant since);
 

@@ -90,6 +90,19 @@ public class BuildRecoveryService {
             BuildStatus.TESTING
     );
 
+    /**
+     * Phase to exclude from reaping even when the session's status is
+     * transient. {@link BuildPhase#PLAN_REVIEW} is reached after
+     * {@link com.bekololek.pluginfactory.agent.PlanGenerationAgent}
+     * persists the plan and flips status to {@code PLANNING} — at that
+     * point the worker is done and the session is awaiting a user
+     * decision (approve / iterate). It can sit there indefinitely
+     * without any heartbeat, exactly the same way {@code CHATTING}
+     * does, and reaping it would surface a misleading "no progress was
+     * reported" error for users who simply took their time reviewing.
+     */
+    private static final BuildPhase USER_WAITING_PHASE = BuildPhase.PLAN_REVIEW;
+
     private static final String RESTART_RECOVERY_MESSAGE =
             "This build was interrupted because the Plugin Factory server " +
                     "restarted mid-build. The session has been marked as failed. " +
@@ -131,7 +144,8 @@ public class BuildRecoveryService {
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void recoverInterruptedBuilds() {
-        List<BuildSession> interrupted = buildSessionRepository.findByStatusIn(TRANSIENT_STATUSES);
+        List<BuildSession> interrupted = buildSessionRepository
+                .findByStatusInAndCurrentPhaseNot(TRANSIENT_STATUSES, USER_WAITING_PHASE);
         if (interrupted.isEmpty()) {
             log.info("Startup build recovery: no interrupted sessions found.");
         } else {
@@ -178,7 +192,8 @@ public class BuildRecoveryService {
     public void reapStaleBuilds() {
         Instant cutoff = Instant.now().minus(STALE_THRESHOLD);
         List<BuildSession> stale = buildSessionRepository
-                .findByStatusInAndUpdatedAtBefore(TRANSIENT_STATUSES, cutoff);
+                .findByStatusInAndCurrentPhaseNotAndUpdatedAtBefore(
+                        TRANSIENT_STATUSES, USER_WAITING_PHASE, cutoff);
         if (stale.isEmpty()) {
             return;
         }
