@@ -68,12 +68,18 @@ Always: BukkitScheduler scheduler = Bukkit.getScheduler();
 - inventory.setItem(int slot, ItemStack item)
 - inventory.getItem(int slot) -> ItemStack (may be null or AIR)
 - player.openInventory(Inventory inventory) -> InventoryView
-- For GUIs: implement Listener, handle InventoryClickEvent.
+- For GUIs: implement Listener, handle InventoryClickEvent / InventoryCloseEvent.
   - event.getInventory() — the top inventory
   - event.getClickedInventory() — which one was clicked (may be null)
   - event.getCurrentItem() — what was clicked
   - event.setCancelled(true) to prevent item removal
   - event.getWhoClicked() returns HumanEntity; cast to Player if needed
+  - event.getView() -> InventoryView — needed to read the inventory title
+- Inventory titles live on InventoryView, NOT on Inventory itself:
+  - In an event handler: event.getView().getTitle() -> String
+  - Outside an event: hold a reference to the InventoryView returned by
+    player.openInventory(...), or store your own title on the InventoryHolder.
+  - DO NOT call inventory.getTitle() — Inventory has no such method and never did.
 
 ### ItemStack (org.bukkit.inventory.ItemStack)
 - new ItemStack(Material material)
@@ -113,6 +119,8 @@ Always: BukkitScheduler scheduler = Bukkit.getScheduler();
 ### Common Pitfalls — DO NOT
 - DO NOT call PluginManager.getRegisteredListeners(plugin) — does not exist.
   Use HandlerList.getRegisteredListeners(plugin) (static).
+- DO NOT call inventory.getTitle() — title is on InventoryView, not Inventory.
+  Use event.getView().getTitle() inside an inventory event handler.
 - DO NOT call Bukkit/world/entity/inventory APIs from an async task.
 - DO NOT use NMS (net.minecraft.server.*) or CraftBukkit internals.
 - DO NOT use reflection, Runtime.exec, ProcessBuilder, or any system I/O.
@@ -122,3 +130,26 @@ Always: BukkitScheduler scheduler = Bukkit.getScheduler();
 - DO NOT register the same Listener twice (check for double-register on reload).
 - DO NOT use deprecated PlayerInteractEvent.getPlayer() workarounds — it exists.
 - DO NOT assume getCommand(name) is non-null — check plugin.yml registration.
+
+### Cross-File Consistency (compilation will fail if you slip)
+You generate every file in a single response. The compiler links them, so every
+class contract MUST be self-consistent across files.
+- If class A is declared `public class A extends B` in one file, then anywhere
+  else that takes a `B` will also accept `A`. If A does NOT extend B, do not
+  pass an A where a B is expected — the compiler will reject it.
+- A constructor's signature must match every call site. If GameBoardGUI has
+  `public GameBoardGUI(Plugin, Game, Player, char)`, then EVERY `new GameBoardGUI(...)`
+  must pass exactly those four argument types in that order. Don't drop the
+  trailing `char`, don't substitute a sibling type for `Game`.
+- Before emitting a `new SomeClass(...)` call, re-read the SomeClass constructor
+  you wrote earlier in this same response. They must agree.
+- If two classes need a shared abstraction (e.g. multiple game modes), either:
+  (a) make the abstraction concrete — define an interface or abstract class
+      and have every concrete class actually `implements`/`extends` it, OR
+  (b) use the concrete type everywhere and don't reference the abstraction.
+  Do NOT reference an abstract type that no concrete class implements.
+- Method overloads/overrides must match the parent's signature exactly
+  (parameter types, return type, throws). `@Override` must compile.
+- Only reference types you actually define in this response or that exist in
+  the templates / Bukkit API / Java standard library. Don't invent helper
+  classes you forgot to write.

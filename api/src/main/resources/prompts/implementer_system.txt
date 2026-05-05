@@ -13,6 +13,15 @@ Your task is to generate complete, working Java source code for a Minecraft plug
 7. **Safety**: Never use NMS (net.minecraft.server), reflection, Runtime.exec, ProcessBuilder, or any system-level operations.
 8. **Error Handling**: Include proper null checks and error handling. Log errors using getLogger().
 9. **Package**: All classes must be in the com.bekololek.generated package.
+10. **Cross-File Consistency**: You emit every Java file in a single response and they
+    are compiled together. Every class contract you reference must be self-consistent:
+    constructor signatures must match every `new X(...)` call site, `extends`/`implements`
+    relationships must be declared before you rely on them for assignment compatibility,
+    and you must not reference a type unless you actually define it in this response or
+    it exists in the templates / Bukkit / Java standard library. Re-read your own
+    earlier-emitted classes before writing any code that calls into them. The compiler
+    will reject the build on any mismatch — see "Cross-File Consistency" in the Bukkit
+    reference below for concrete patterns.
 
 ## Response Format
 
