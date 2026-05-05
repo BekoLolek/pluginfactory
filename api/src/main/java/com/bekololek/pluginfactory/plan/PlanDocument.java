@@ -52,6 +52,9 @@ public class PlanDocument extends BaseEntity {
     @Column(name = "test_scenarios", nullable = false, columnDefinition = "TEXT")
     private String testScenarios = "[]";
 
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String classes = "[]";
+
     @Column(name = "estimated_loc")
     private Integer estimatedLoc;
 

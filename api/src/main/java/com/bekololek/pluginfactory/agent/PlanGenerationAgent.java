@@ -125,6 +125,7 @@ public class PlanGenerationAgent {
         plan.setConfigSchema(getArrayAsString(root, "configSchema"));
         plan.setDependencies(getArrayAsString(root, "dependencies"));
         plan.setTestScenarios(getArrayAsString(root, "testScenarios"));
+        plan.setClasses(getArrayAsString(root, "classes"));
 
         if (root.has("estimatedLinesOfCode")) {
             plan.setEstimatedLoc(root.get("estimatedLinesOfCode").asInt());
@@ -153,7 +154,7 @@ public class PlanGenerationAgent {
         return planDocumentRepository.save(plan);
     }
 
-    private static Map<String, Object> planToolSchema() {
+    static Map<String, Object> planToolSchema() {
         Map<String, Object> commandItem = Map.of(
                 "type", "object",
                 "properties", Map.of(
@@ -172,6 +173,43 @@ public class PlanGenerationAgent {
                         "description", Map.of("type", "string")
                 ),
                 "required", List.of("event", "description")
+        );
+
+        // Class contract: every Java class the plugin will define, with the
+        // hierarchy + constructor signature the implementer must honour.
+        // Pattern locks on `name` keep the LLM from emitting generics or
+        // anonymous-class chatter. constructorParams entries are free-form
+        // strings shaped like "Type name" (the order is the call-site order).
+        Map<String, Object> classItem = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "name", Map.of(
+                                "type", "string",
+                                "pattern", "^[A-Z][A-Za-z0-9_]*$",
+                                "description", "Simple Java class name (no package, no generics)."
+                        ),
+                        "extends", Map.of(
+                                "type", "string",
+                                "description", "Parent class simple name, or null/empty if extending Object."
+                        ),
+                        "implements", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string"),
+                                "description", "Simple names of interfaces this class implements."
+                        ),
+                        "constructorParams", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string"),
+                                "description", "Each entry is `Type name`, in the exact order the " +
+                                        "constructor will receive them. Empty list means no-arg constructor."
+                        ),
+                        "description", Map.of(
+                                "type", "string",
+                                "description", "One-line role for this class (e.g. 'main plugin', " +
+                                        "'/start command executor', 'GUI for the active board')."
+                        )
+                ),
+                "required", List.of("name")
         );
 
         Map<String, Object> properties = new LinkedHashMap<>();
@@ -193,6 +231,14 @@ public class PlanGenerationAgent {
         properties.put("configSchema", Map.of("type", "object", "additionalProperties", true));
         properties.put("dependencies", Map.of("type", "array", "items", Map.of("type", "string")));
         properties.put("testScenarios", Map.of("type", "array", "items", Map.of("type", "string")));
+        properties.put("classes", Map.of(
+                "type", "array",
+                "items", classItem,
+                "description", "Every Java class this plugin will define, with hierarchy " +
+                        "and primary constructor signature locked. The implementer is " +
+                        "required to honour these contracts across files. May be empty " +
+                        "for trivial single-class plugins."
+        ));
         properties.put("estimatedLinesOfCode", Map.of("type", "integer"));
 
         Map<String, Object> schema = new LinkedHashMap<>();

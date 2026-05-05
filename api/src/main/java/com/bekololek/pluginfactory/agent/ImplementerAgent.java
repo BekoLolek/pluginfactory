@@ -78,7 +78,7 @@ public class ImplementerAgent {
         return new ImplementationResult(allFiles, tokensUsed);
     }
 
-    private String buildUserMessage(PlanDocument plan, Map<String, String> templateFiles) {
+    String buildUserMessage(PlanDocument plan, Map<String, String> templateFiles) {
         StringBuilder sb = new StringBuilder();
         sb.append("## Plugin Plan\n\n");
         sb.append("**Plugin Name**: ").append(plan.getPluginName()).append("\n");
@@ -90,6 +90,18 @@ public class ImplementerAgent {
         sb.append("### Event Listeners\n").append(plan.getEventListeners()).append("\n\n");
         sb.append("### Config Schema\n").append(plan.getConfigSchema()).append("\n\n");
         sb.append("### Dependencies\n").append(plan.getDependencies()).append("\n\n");
+
+        if (hasClassContracts(plan.getClasses())) {
+            sb.append("### Class Contracts (LOCKED — every file must match)\n");
+            sb.append("These class definitions were agreed at plan time. Constructor signatures, ")
+                    .append("`extends` parents, and `implements` interfaces are NOT negotiable: ")
+                    .append("every `new X(...)` call site, every parameter type, and every override ")
+                    .append("MUST match the contract below. If a class lists `extends Game`, the ")
+                    .append("compiler will only accept it where a `Game` is expected. If a class ")
+                    .append("lists 4 constructorParams, every `new` call must pass exactly those 4 ")
+                    .append("argument types in that order.\n\n");
+            sb.append("```json\n").append(plan.getClasses()).append("\n```\n\n");
+        }
 
         sb.append("## Template Code (already generated - DO NOT include these in your response)\n\n");
         sb.append("### pom.xml\n```xml\n").append(templateFiles.get("pom.xml")).append("\n```\n\n");
@@ -129,6 +141,14 @@ public class ImplementerAgent {
             // Return empty map on parse failure
             return Map.of();
         }
+    }
+
+    private boolean hasClassContracts(String classesJson) {
+        if (classesJson == null) {
+            return false;
+        }
+        String trimmed = classesJson.trim();
+        return !trimmed.isEmpty() && !trimmed.equals("[]") && !trimmed.equals("null");
     }
 
     private String loadSystemPrompt() {

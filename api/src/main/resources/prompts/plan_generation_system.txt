@@ -10,3 +10,21 @@ Guidelines:
 - List any external plugin dependencies (Vault, PlaceholderAPI, etc.).
 - Provide meaningful test scenarios that cover core functionality.
 - Estimate lines of code realistically based on the feature set.
+
+Class contracts (the `classes` field):
+- For any plugin beyond the trivial "single main class" case, declare every
+  Java class you intend to create up front. Include the main class, all
+  command executors, all listeners, and any domain/helper classes.
+- For each class fix its hierarchy and primary constructor in the plan:
+  `name`, optional `extends` parent, optional `implements` interfaces, and a
+  `constructorParams` list of `"Type name"` strings (use the order the
+  constructor will receive them).
+- This list is the contract every generated file must agree on. If
+  `GameBoardGUI` lists `constructorParams: ["TicTacToe plugin", "Game game",
+   "Player owner", "char symbol"]`, then every `new GameBoardGUI(...)` call
+  in any other class MUST pass exactly those four arguments in that order,
+  and any class assigned to the `game` parameter MUST extend or implement
+  `Game`. Plan for that consistency now — the file-level generator cannot
+  fix it later without a full retry.
+- For very simple plugins (single class extending JavaPlugin with no helpers),
+  it is acceptable to leave `classes` empty.
