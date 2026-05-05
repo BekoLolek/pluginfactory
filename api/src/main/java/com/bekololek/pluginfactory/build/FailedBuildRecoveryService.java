@@ -39,6 +39,8 @@ public class FailedBuildRecoveryService {
     private final ChatMessageService chatMessageService;
     private final BuildSessionService buildSessionService;
     private final BuildLauncher buildLauncher;
+    private final JavacErrorParser javacErrorParser;
+    private final JavacErrorFormatter javacErrorFormatter;
 
     // REQUIRES_NEW: AdminService is @Transactional(readOnly = true) at the
     // class level, so AdminController -> AdminService.recoverFailedBuild
@@ -100,15 +102,14 @@ public class FailedBuildRecoveryService {
     private BuildIteration doRecover(BuildSession session, String trigger) {
         UUID sessionId = session.getId();
         BuildError latest = buildErrorRepository.findFirstBySessionIdOrderByCreatedAtDesc(sessionId);
-        String errorContext = latest != null ? latest.getMessage() : "Previous build failed.";
+        String errorContext = buildErrorContext(latest);
         String phase = session.getCurrentPhase() != null ? session.getCurrentPhase().name() : "unknown";
 
         chatMessageService.addMessage(sessionId, "system",
                 "RECOVERY (" + trigger + "): previous build failed at phase " + phase + ":\n\n" +
                         errorContext + "\n\n" +
-                        "Fix this issue. Do NOT add new features, change scope, or " +
-                        "introduce anything not already in the approved plan. Only repair " +
-                        "the failure described above.",
+                        "Do NOT add new features, change scope, or introduce anything not " +
+                        "already in the approved plan. Only repair the failure described above.",
                 null, 0);
 
         // Clear FAILED-stamped completedAt so the next terminal transition
@@ -123,6 +124,25 @@ public class FailedBuildRecoveryService {
         log.info("Recovery launched for session {}: trigger={}, iteration={}",
                 sessionId, trigger, iteration.getIterationNumber());
         return iteration;
+    }
+
+    /**
+     * Builds the fix-context section of the recovery prompt. When the latest
+     * error parses cleanly into structured javac errors, we hand the LLM a
+     * formatted block with file/line, kind, and per-pattern hints (e.g.
+     * "Inventory has no getTitle()"). When parsing produces nothing — pre-Maven
+     * failures, dependency resolution errors, OOM kills — we fall back to the
+     * raw message so the model still sees what happened.
+     */
+    private String buildErrorContext(BuildError latest) {
+        if (latest == null) {
+            return "Previous build failed.";
+        }
+        List<JavacError> parsed = javacErrorParser.parse(latest.getMessage());
+        if (parsed.isEmpty()) {
+            return latest.getMessage();
+        }
+        return javacErrorFormatter.format(parsed);
     }
 
     /**
