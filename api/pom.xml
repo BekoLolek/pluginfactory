@@ -19,7 +19,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <jjwt.version>0.12.6</jjwt.version>
+        <jjwt.version>0.13.0</jjwt.version>
         <stripe.version>28.2.0</stripe.version>
         <docker-java.version>3.3.6</docker-java.version>
         <resilience4j.version>2.2.0</resilience4j.version>
