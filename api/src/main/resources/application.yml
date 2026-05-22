@@ -74,6 +74,17 @@ spring:
     locations: classpath:db/migration
   jpa:
     database-platform: org.hibernate.dialect.H2Dialect
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GMAIL_USERNAME:}
+    password: ${GMAIL_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 jwt:
   secret: dev-secret-key-at-least-256-bits-long-for-hs256-algorithm-replace-in-prod
@@ -100,19 +111,6 @@ docker:
   host: ${DOCKER_HOST:unix:///var/run/docker.sock}
   build-image: pluginfactory-build:latest
   test-image: pluginfactory-test:latest
-
-spring:
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${GMAIL_USERNAME:}
-    password: ${GMAIL_APP_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
 
 app:
   base-url: http://localhost:5173
@@ -145,6 +143,17 @@ spring:
   h2:
     console:
       enabled: false
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GMAIL_USERNAME}
+    password: ${GMAIL_APP_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 jwt:
   secret: ${JWT_SECRET}
@@ -181,19 +190,6 @@ discord:
   client-id: ${DISCORD_CLIENT_ID}
   client-secret: ${DISCORD_CLIENT_SECRET}
   redirect-uri: ${DISCORD_REDIRECT_URI}
-
-spring:
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${GMAIL_USERNAME}
-    password: ${GMAIL_APP_PASSWORD}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
 
 docker:
   host: ${DOCKER_HOST:unix:///var/run/docker.sock}
