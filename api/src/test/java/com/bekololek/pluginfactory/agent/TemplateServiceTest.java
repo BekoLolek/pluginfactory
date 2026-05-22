@@ -118,6 +118,44 @@ class TemplateServiceTest {
         assertThat(files.keySet().stream().filter(k -> k.endsWith(".java")).count()).isEqualTo(1);
     }
 
+    @Test
+    void renderTemplate_withVaultDependency_injectsVaultInPom() {
+        PlanDocument plan = createTestPlan();
+        plan.setDependencies("[\"Vault\"]");
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+
+        String pom = files.get("pom.xml");
+        assertThat(pom).contains("jitpack.io");
+        assertThat(pom).contains("com.github.MilkBowl");
+        assertThat(pom).contains("VaultAPI");
+        assertThat(pom).contains("<scope>provided</scope>");
+    }
+
+    @Test
+    void renderTemplate_withoutVaultDependency_omitsVaultFromPom() {
+        PlanDocument plan = createTestPlan();
+        plan.setDependencies("[\"PlaceholderAPI\"]");
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+
+        String pom = files.get("pom.xml");
+        assertThat(pom).doesNotContain("VaultAPI");
+        assertThat(pom).doesNotContain("jitpack.io");
+    }
+
+    @Test
+    void renderTemplate_withVaultDependency_noUnresolvedPlaceholders() {
+        PlanDocument plan = createTestPlan();
+        plan.setDependencies("[\"Vault\"]");
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+
+        String pom = files.get("pom.xml");
+        assertThat(pom).doesNotContain("{{");
+        assertThat(pom).doesNotContain("}}");
+    }
+
     private PlanDocument createTestPlan() {
         PlanDocument plan = new PlanDocument();
         plan.setPluginName("Test Plugin");

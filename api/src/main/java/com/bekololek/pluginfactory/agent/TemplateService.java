@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -43,11 +44,16 @@ public class TemplateService {
 
         // Render pom.xml
         String pomTemplate = loadTemplateFile("pom.xml");
+        List<String> planDeps = parseDependencyList(plan.getDependencies());
+        String extraRepositories = buildExtraRepositories(planDeps);
+        String extraDependencies = buildExtraDependencies(planDeps);
         String pom = pomTemplate
                 .replace("{{artifactId}}", artifactId)
                 .replace("{{version}}", version)
                 .replace("{{minecraftVersion}}", minecraftVersion)
-                .replace("{{javaVersion}}", javaVersion);
+                .replace("{{javaVersion}}", javaVersion)
+                .replace("{{extraRepositories}}", extraRepositories)
+                .replace("{{extraDependencies}}", extraDependencies);
         files.put("pom.xml", pom);
 
         // Render plugin.yml
@@ -160,6 +166,47 @@ public class TemplateService {
         log.warn("Plan stored unresolvable minecraftVersion '{}' — falling back to {}",
                 raw, DEFAULT_MINECRAFT_VERSION);
         return DEFAULT_MINECRAFT_VERSION;
+    }
+
+    private List<String> parseDependencyList(String dependenciesJson) {
+        try {
+            List<?> raw = MAPPER.readValue(dependenciesJson, new TypeReference<List<?>>() {});
+            return raw.stream()
+                    .map(Object::toString)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("Failed to parse dependencies JSON: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private boolean hasDependency(List<String> deps, String name) {
+        String lower = name.toLowerCase();
+        return deps.stream().anyMatch(d -> d.toLowerCase().contains(lower));
+    }
+
+    private String buildExtraRepositories(List<String> deps) {
+        StringBuilder sb = new StringBuilder();
+        if (hasDependency(deps, "vault")) {
+            sb.append("\n        <repository>\n")
+              .append("            <id>jitpack.io</id>\n")
+              .append("            <url>https://jitpack.io</url>\n")
+              .append("        </repository>");
+        }
+        return sb.toString();
+    }
+
+    private String buildExtraDependencies(List<String> deps) {
+        StringBuilder sb = new StringBuilder();
+        if (hasDependency(deps, "vault")) {
+            sb.append("\n        <dependency>\n")
+              .append("            <groupId>com.github.MilkBowl</groupId>\n")
+              .append("            <artifactId>VaultAPI</artifactId>\n")
+              .append("            <version>1.7.1</version>\n")
+              .append("            <scope>provided</scope>\n")
+              .append("        </dependency>");
+        }
+        return sb.toString();
     }
 
     private String generateCommandsYaml(String commandsJson) {
@@ -283,7 +330,7 @@ public class TemplateService {
                             <repository>
                                 <id>papermc</id>
                                 <url>https://repo.papermc.io/repository/maven-public/</url>
-                            </repository>
+                            </repository>{{extraRepositories}}
                         </repositories>
                         <dependencies>
                             <dependency>
@@ -291,7 +338,7 @@ public class TemplateService {
                                 <artifactId>paper-api</artifactId>
                                 <version>{{minecraftVersion}}-R0.1-SNAPSHOT</version>
                                 <scope>provided</scope>
-                            </dependency>
+                            </dependency>{{extraDependencies}}
                         </dependencies>
                         <build>
                             <plugins>

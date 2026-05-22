@@ -15,7 +15,7 @@
         <repository>
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
-        </repository>
+        </repository>{{extraRepositories}}
     </repositories>
     <dependencies>
         <dependency>
@@ -23,7 +23,7 @@
             <artifactId>paper-api</artifactId>
             <version>{{minecraftVersion}}-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
-        </dependency>
+        </dependency>{{extraDependencies}}
     </dependencies>
     <build>
         <plugins>
