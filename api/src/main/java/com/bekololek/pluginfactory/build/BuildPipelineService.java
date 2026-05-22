@@ -2,6 +2,7 @@ package com.bekololek.pluginfactory.build;
 
 import com.bekololek.pluginfactory.agent.ImplementerAgent;
 import com.bekololek.pluginfactory.agent.dto.ImplementationResult;
+import com.bekololek.pluginfactory.email.EmailNotificationService;
 import com.bekololek.pluginfactory.common.config.AsyncConfig;
 import com.bekololek.pluginfactory.common.logging.MdcRequestFilter;
 import org.slf4j.MDC;
@@ -45,6 +46,7 @@ public class BuildPipelineService {
     private final ErrorClassifier errorClassifier;
     private final RetryPolicy retryPolicy;
     private final ChatMessageService chatMessageService;
+    private final EmailNotificationService emailNotificationService;
 
     /**
      * Runs the full build pipeline off the request thread.
@@ -162,6 +164,7 @@ public class BuildPipelineService {
             buildSessionService.updateStatus(sessionId, BuildStatus.COMPLETED);
             buildSessionService.updatePhase(sessionId, BuildPhase.IDLE);
             buildProgressService.notifyStatusChange(sessionId, BuildStatus.COMPLETED);
+            emailNotificationService.notifyBuildSuccess(sessionId);
 
             log.info("Build completed successfully for session {}", sessionId);
 
@@ -267,6 +270,7 @@ public class BuildPipelineService {
         buildSessionService.updateStatus(sessionId, BuildStatus.FAILED);
         buildProgressService.notifyStatusChange(sessionId, BuildStatus.FAILED);
         buildProgressService.notifyError(sessionId, message);
+        emailNotificationService.notifyBuildFailed(sessionId, message);
     }
 
     private void retryBuild(UUID sessionId, String errorMessage) {
@@ -329,6 +333,7 @@ public class BuildPipelineService {
             buildSessionService.updateStatus(sessionId, BuildStatus.COMPLETED);
             buildSessionService.updatePhase(sessionId, BuildPhase.IDLE);
             buildProgressService.notifyStatusChange(sessionId, BuildStatus.COMPLETED);
+            emailNotificationService.notifyBuildSuccess(sessionId);
 
             log.info("Retry build completed successfully for session {}", sessionId);
 

@@ -101,6 +101,26 @@ docker:
   build-image: pluginfactory-build:latest
   test-image: pluginfactory-test:latest
 
+spring:
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GMAIL_USERNAME:}
+    password: ${GMAIL_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+app:
+  base-url: http://localhost:5173
+  email:
+    enabled: false
+    from: bekololek@pluginfactory.org
+    from-name: Plugin Factory
+
 cors:
   allowed-origins: http://localhost:5173
 
@@ -137,6 +157,10 @@ app:
   # No default: deployment must specify canonical public URL. A stale default
   # (e.g. a previous hostname) would silently break Stripe redirect URLs.
   base-url: ${APP_BASE_URL}
+  email:
+    enabled: true
+    from: bekololek@pluginfactory.org
+    from-name: Plugin Factory
 
 anthropic:
   api-key: ${ANTHROPIC_API_KEY}
@@ -155,6 +179,19 @@ discord:
   client-id: ${DISCORD_CLIENT_ID}
   client-secret: ${DISCORD_CLIENT_SECRET}
   redirect-uri: ${DISCORD_REDIRECT_URI}
+
+spring:
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GMAIL_USERNAME}
+    password: ${GMAIL_APP_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 docker:
   host: ${DOCKER_HOST:unix:///var/run/docker.sock}

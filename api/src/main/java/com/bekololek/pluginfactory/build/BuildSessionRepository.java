@@ -51,4 +51,7 @@ public interface BuildSessionRepository extends JpaRepository<BuildSession, UUID
             Pageable pageable);
 
     List<BuildSession> findByCreatedAtBetween(Instant from, Instant to);
+
+    @Query("SELECT b.userId FROM BuildSession b GROUP BY b.userId HAVING MAX(b.createdAt) BETWEEN :from AND :to")
+    List<UUID> findUserIdsWithLastSessionBetween(@Param("from") Instant from, @Param("to") Instant to);
 }

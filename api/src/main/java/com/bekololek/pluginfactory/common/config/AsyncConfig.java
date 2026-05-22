@@ -1,6 +1,7 @@
 package com.bekololek.pluginfactory.common.config;
 
 import com.bekololek.pluginfactory.common.logging.MdcAsyncTaskDecorator;
+import com.bekololek.pluginfactory.email.EmailService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
@@ -48,6 +49,17 @@ public class AsyncConfig {
         // BuildRecoveryService on the next startup.
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(120);
+        executor.initialize();
+        return executor;
+    }
+
+    @Bean(name = EmailService.EMAIL_EXECUTOR)
+    public TaskExecutor emailExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("email-");
         executor.initialize();
         return executor;
     }
