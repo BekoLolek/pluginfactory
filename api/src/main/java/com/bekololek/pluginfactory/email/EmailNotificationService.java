@@ -28,6 +28,8 @@ public class EmailNotificationService {
     @Value("${app.base-url:http://localhost:5173}")
     private String baseUrl;
 
+    private final EmailProperties emailProperties;
+
     public void notifyBuildSuccess(UUID sessionId) {
         try {
             BuildSession session = buildSessionService.getSessionById(sessionId);
@@ -35,7 +37,7 @@ public class EmailNotificationService {
             if (user == null) return;
 
             String pluginName = resolvePluginName(sessionId);
-            Map<String, Object> vars = new HashMap<>();
+            Map<String, Object> vars = baseVars();
             vars.put("displayName", user.getDisplayName());
             vars.put("pluginName", pluginName);
             vars.put("dashboardUrl", baseUrl + "/builds/" + sessionId);
@@ -50,21 +52,20 @@ public class EmailNotificationService {
         }
     }
 
-    public void notifyBuildFailed(UUID sessionId, String errorMessage) {
+    /**
+     * @param category one of "COMPILATION", "SECURITY", or "GENERAL" — never the raw error string
+     */
+    public void notifyBuildFailed(UUID sessionId, String category) {
         try {
             BuildSession session = buildSessionService.getSessionById(sessionId);
             User user = userRepository.findById(session.getUserId()).orElse(null);
             if (user == null) return;
 
             String pluginName = resolvePluginName(sessionId);
-            String errorSummary = errorMessage != null && errorMessage.length() > 600
-                    ? errorMessage.substring(0, 600) + "…"
-                    : (errorMessage != null ? errorMessage : "An unexpected error occurred.");
-
-            Map<String, Object> vars = new HashMap<>();
+            Map<String, Object> vars = baseVars();
             vars.put("displayName", user.getDisplayName());
             vars.put("pluginName", pluginName);
-            vars.put("errorSummary", errorSummary);
+            vars.put("failureReason", friendlyFailureReason(category));
             vars.put("dashboardUrl", baseUrl + "/builds/" + sessionId);
 
             emailService.sendHtml(
@@ -79,7 +80,7 @@ public class EmailNotificationService {
 
     public void notifyInactivity(User user) {
         try {
-            Map<String, Object> vars = new HashMap<>();
+            Map<String, Object> vars = baseVars();
             vars.put("displayName", user.getDisplayName());
             vars.put("dashboardUrl", baseUrl);
 
@@ -91,6 +92,20 @@ public class EmailNotificationService {
         } catch (Exception e) {
             log.error("Failed to send inactivity email to user {}: {}", user.getId(), e.getMessage());
         }
+    }
+
+    private Map<String, Object> baseVars() {
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("discordUrl", emailProperties.getDiscordUrl());
+        return vars;
+    }
+
+    private static String friendlyFailureReason(String category) {
+        return switch (category) {
+            case "COMPILATION" -> "The build failed during compilation.";
+            case "SECURITY"    -> "The build failed during the security scan.";
+            default            -> "The build failed due to an unexpected issue.";
+        };
     }
 
     private String resolvePluginName(UUID sessionId) {

@@ -14,4 +14,5 @@ public class EmailProperties {
     private boolean enabled = true;
     private String from = "bekololek@pluginfactory.org";
     private String fromName = "Plugin Factory";
+    private String discordUrl = "";
 }

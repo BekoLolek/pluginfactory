@@ -120,6 +120,7 @@ app:
     enabled: false
     from: bekololek@pluginfactory.org
     from-name: Plugin Factory
+    discord-url: ${DISCORD_INVITE_URL:}
 
 cors:
   allowed-origins: http://localhost:5173
@@ -161,6 +162,7 @@ app:
     enabled: true
     from: bekololek@pluginfactory.org
     from-name: Plugin Factory
+    discord-url: ${DISCORD_INVITE_URL:}
 
 anthropic:
   api-key: ${ANTHROPIC_API_KEY}

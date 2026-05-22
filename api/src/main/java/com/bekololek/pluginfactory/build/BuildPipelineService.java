@@ -270,7 +270,7 @@ public class BuildPipelineService {
         buildSessionService.updateStatus(sessionId, BuildStatus.FAILED);
         buildProgressService.notifyStatusChange(sessionId, BuildStatus.FAILED);
         buildProgressService.notifyError(sessionId, message);
-        emailNotificationService.notifyBuildFailed(sessionId, message);
+        emailNotificationService.notifyBuildFailed(sessionId, category);
     }
 
     private void retryBuild(UUID sessionId, String errorMessage) {
