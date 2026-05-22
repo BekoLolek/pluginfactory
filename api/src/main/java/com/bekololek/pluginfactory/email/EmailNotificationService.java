@@ -94,6 +94,31 @@ public class EmailNotificationService {
         }
     }
 
+    public void sendManual(String recipientEmail, String template) {
+        String displayName = userRepository.findByEmail(recipientEmail)
+                .map(User::getDisplayName)
+                .orElse(recipientEmail);
+
+        Map<String, Object> vars = baseVars();
+        vars.put("displayName", displayName);
+        vars.put("dashboardUrl", baseUrl);
+        if ("build-success".equals(template)) {
+            vars.put("pluginName", "your plugin");
+        } else if ("build-failed".equals(template)) {
+            vars.put("pluginName", "your plugin");
+            vars.put("failureReason", "The build failed during compilation.");
+        }
+
+        String subject = switch (template) {
+            case "build-success"       -> "Your plugin is ready";
+            case "build-failed"        -> "Build failed";
+            case "inactivity-reminder" -> "Missing your plugins — come back and build something";
+            default -> throw new IllegalArgumentException("Unknown template: " + template);
+        };
+
+        emailService.sendHtml(recipientEmail, subject, template, vars);
+    }
+
     private Map<String, Object> baseVars() {
         Map<String, Object> vars = new HashMap<>();
         vars.put("discordUrl", emailProperties.getDiscordUrl());

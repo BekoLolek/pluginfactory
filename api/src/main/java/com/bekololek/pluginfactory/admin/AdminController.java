@@ -2,6 +2,7 @@ package com.bekololek.pluginfactory.admin;
 
 import com.bekololek.pluginfactory.admin.dto.*;
 import com.bekololek.pluginfactory.build.BuildIteration;
+import com.bekololek.pluginfactory.email.EmailNotificationService;
 import com.bekololek.pluginfactory.build.dto.BuildIterationDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -10,6 +11,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 import java.time.Instant;
 import java.util.List;
@@ -21,6 +24,7 @@ import java.util.UUID;
 public class AdminController {
 
     private final AdminService adminService;
+    private final EmailNotificationService emailNotificationService;
 
     @GetMapping("/overview")
     public ResponseEntity<OverviewResponse> getOverview() {
@@ -160,5 +164,11 @@ public class AdminController {
     @PostMapping("/builds/{sessionId}/retrigger")
     public ResponseEntity<RetriggerResponse> retrigger(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(adminService.retriggerFailedBuild(sessionId));
+    }
+
+    @PostMapping("/email/send")
+    public ResponseEntity<Map<String, String>> sendEmail(@RequestBody AdminSendEmailRequest request) {
+        emailNotificationService.sendManual(request.recipientEmail(), request.template());
+        return ResponseEntity.ok(Map.of("status", "queued"));
     }
 }
