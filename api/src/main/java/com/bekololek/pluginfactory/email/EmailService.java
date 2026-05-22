@@ -18,7 +18,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class EmailService {
 
-    static final String EMAIL_EXECUTOR = "emailExecutor";
+    public static final String EMAIL_EXECUTOR = "emailExecutor";
 
     private final JavaMailSender mailSender;
     private final SpringTemplateEngine templateEngine;
