@@ -36,6 +36,9 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       APP_BASE_URL: ${APP_BASE_URL}
       DASHBOARD_API_KEY: ${DASHBOARD_API_KEY}
+      GMAIL_USERNAME: ${GMAIL_USERNAME}
+      GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD}
+      DISCORD_INVITE_URL: ${DISCORD_INVITE_URL}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
