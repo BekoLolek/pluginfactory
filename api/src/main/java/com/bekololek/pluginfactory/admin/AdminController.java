@@ -4,6 +4,7 @@ import com.bekololek.pluginfactory.admin.dto.*;
 import com.bekololek.pluginfactory.build.BuildIteration;
 import com.bekololek.pluginfactory.email.EmailNotificationService;
 import com.bekololek.pluginfactory.build.dto.BuildIterationDto;
+import com.bekololek.pluginfactory.plan.dto.PlanDocumentDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -124,6 +125,11 @@ public class AdminController {
     @GetMapping("/builds/{sessionId}/errors")
     public ResponseEntity<List<AdminErrorRecord>> getSessionErrors(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(adminService.getSessionErrors(sessionId));
+    }
+
+    @GetMapping("/builds/{sessionId}/plan")
+    public ResponseEntity<PlanDocumentDto> getSessionPlan(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(adminService.getSessionPlan(sessionId));
     }
 
     /**

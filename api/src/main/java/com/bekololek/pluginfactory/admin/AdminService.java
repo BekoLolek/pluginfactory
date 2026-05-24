@@ -8,7 +8,9 @@ import com.bekololek.pluginfactory.marketplace.MarketplaceListing;
 import com.bekololek.pluginfactory.marketplace.MarketplaceListingRepository;
 import com.bekololek.pluginfactory.marketplace.Purchase;
 import com.bekololek.pluginfactory.marketplace.PurchaseRepository;
+import com.bekololek.pluginfactory.plan.PlanDocument;
 import com.bekololek.pluginfactory.plan.PlanDocumentRepository;
+import com.bekololek.pluginfactory.plan.dto.*;
 import com.bekololek.pluginfactory.subscription.Subscription;
 import com.bekololek.pluginfactory.subscription.SubscriptionRepository;
 import com.bekololek.pluginfactory.subscription.Tier;
@@ -20,6 +22,8 @@ import com.bekololek.pluginfactory.user.ApiKey;
 import com.bekololek.pluginfactory.user.ApiKeyRepository;
 import com.bekololek.pluginfactory.user.User;
 import com.bekololek.pluginfactory.user.UserRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -56,6 +60,7 @@ public class AdminService {
     private final PlanDocumentRepository planDocumentRepository;
     private final BuildSessionService buildSessionService;
     private final TokenBudgetService tokenBudgetService;
+    private final ObjectMapper objectMapper;
 
     // ── Overview ──────────────────────────────────────────────────────
 
@@ -331,6 +336,45 @@ public class AdminService {
                 BuildPhase.CLARIFICATION.name(),
                 null
         );
+    }
+
+    public PlanDocumentDto getSessionPlan(UUID sessionId) {
+        if (buildSessionRepository.findById(sessionId).isEmpty()) {
+            throw new NotFoundException("Build session not found");
+        }
+        PlanDocument plan = planDocumentRepository.findBySessionId(sessionId)
+                .orElseThrow(() -> new NotFoundException("Plan not found for this session"));
+        return toPlanDto(plan);
+    }
+
+    private PlanDocumentDto toPlanDto(PlanDocument plan) {
+        return new PlanDocumentDto(
+                plan.getId(),
+                plan.getSessionId(),
+                plan.getPluginName(),
+                plan.getDescription(),
+                plan.getMinecraftVersion(),
+                plan.getServerType(),
+                parsePlanJson(plan.getCommands(), new TypeReference<List<CommandSpec>>() {}),
+                parsePlanJson(plan.getEventListeners(), new TypeReference<List<EventListenerSpec>>() {}),
+                parsePlanJson(plan.getConfigSchema(), new TypeReference<List<ConfigEntry>>() {}),
+                parsePlanJson(plan.getDependencies(), new TypeReference<List<DependencySpec>>() {}),
+                parsePlanJson(plan.getTestScenarios(), new TypeReference<List<TestScenario>>() {}),
+                plan.getEstimatedLoc(),
+                plan.getComplexityScore(),
+                plan.getVersion(),
+                plan.getCreatedAt()
+        );
+    }
+
+    private <T> T parsePlanJson(String json, TypeReference<T> typeRef) {
+        try {
+            T result = objectMapper.readValue(json, typeRef);
+            if (result != null) return result;
+        } catch (Exception ignored) {}
+        @SuppressWarnings("unchecked")
+        T empty = (T) Collections.emptyList();
+        return empty;
     }
 
     private AdminErrorRecord toRecord(BuildError e) {
