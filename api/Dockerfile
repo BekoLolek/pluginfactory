@@ -47,11 +47,13 @@ EXPOSE 8080
 
 # JVM tuning for small containers (1 OCPU / 6GB host)
 # MaxRAMPercentage relative to container limit, not host. Memory limits set in compose.
+# Heap capped at 60% of 1800MB (~1080MB) to leave room for Metaspace (256MB) and
+# native overhead (threads, code cache). 128MB was too small for Spring Boot + Thymeleaf.
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
-    -XX:MaxRAMPercentage=75.0 \
+    -XX:MaxRAMPercentage=60.0 \
     -XX:InitialRAMPercentage=25.0 \
     -XX:+UseSerialGC \
-    -XX:MaxMetaspaceSize=128m \
+    -XX:MaxMetaspaceSize=256m \
     -Xss512k \
     -Djava.security.egd=file:/dev/./urandom"
 
