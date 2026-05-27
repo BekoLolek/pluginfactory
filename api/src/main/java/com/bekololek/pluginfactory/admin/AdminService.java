@@ -286,9 +286,11 @@ public class AdminService {
     public RetriggerResponse retriggerFailedBuild(UUID sessionId) {
         BuildSession session = buildSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new NotFoundException("Build session not found"));
-        if (session.getStatus() != BuildStatus.FAILED) {
+        if (session.getStatus() != BuildStatus.FAILED
+                && session.getStatus() != BuildStatus.CHATTING
+                && session.getStatus() != BuildStatus.PLANNING) {
             throw new ValidationException(
-                    "Only FAILED sessions can be retriggered (current: " + session.getStatus() + ")");
+                    "Session cannot be retriggered in current state (current: " + session.getStatus() + ")");
         }
 
         boolean hasPlan = planDocumentRepository.findBySessionId(sessionId).isPresent();
@@ -363,7 +365,10 @@ public class AdminService {
                 plan.getEstimatedLoc(),
                 plan.getComplexityScore(),
                 plan.getVersion(),
-                plan.getCreatedAt()
+                plan.getCreatedAt(),
+                plan.getViabilityStatus(),
+                parsePlanJson(plan.getSetupSteps(), new TypeReference<java.util.List<String>>() {}),
+                parsePlanJson(plan.getAutoHandled(), new TypeReference<java.util.List<String>>() {})
         );
     }
 
