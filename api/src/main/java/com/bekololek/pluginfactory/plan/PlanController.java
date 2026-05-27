@@ -123,7 +123,10 @@ public class PlanController {
                 plan.getEstimatedLoc(),
                 plan.getComplexityScore(),
                 plan.getVersion(),
-                plan.getCreatedAt()
+                plan.getCreatedAt(),
+                plan.getViabilityStatus(),
+                parseJson(plan.getSetupSteps(), new TypeReference<List<String>>() {}),
+                parseJson(plan.getAutoHandled(), new TypeReference<List<String>>() {})
         );
     }
 

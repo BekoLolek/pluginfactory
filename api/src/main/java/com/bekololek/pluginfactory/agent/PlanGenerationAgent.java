@@ -127,6 +127,12 @@ public class PlanGenerationAgent {
         plan.setTestScenarios(getArrayAsString(root, "testScenarios"));
         plan.setClasses(getArrayAsString(root, "classes"));
 
+        if (root.has("viabilityStatus") && !root.get("viabilityStatus").isNull()) {
+            plan.setViabilityStatus(root.get("viabilityStatus").asText("READY"));
+        }
+        plan.setSetupSteps(getArrayAsString(root, "setupSteps"));
+        plan.setAutoHandled(getArrayAsString(root, "autoHandled"));
+
         if (root.has("estimatedLinesOfCode")) {
             plan.setEstimatedLoc(root.get("estimatedLinesOfCode").asInt());
         } else if (root.has("estimatedLoc")) {
@@ -240,6 +246,22 @@ public class PlanGenerationAgent {
                         "for trivial single-class plugins."
         ));
         properties.put("estimatedLinesOfCode", Map.of("type", "integer"));
+
+        properties.put("viabilityStatus", Map.of(
+                "type", "string",
+                "enum", List.of("READY", "NEEDS_SETUP", "PARTIAL"),
+                "description", "READY = works on install; NEEDS_SETUP = admin must configure before it functions; PARTIAL = core works but some features need setup"
+        ));
+        properties.put("setupSteps", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string"),
+                "description", "Steps the server admin must complete before the plugin is functional. Empty for READY plugins."
+        ));
+        properties.put("autoHandled", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string"),
+                "description", "Features the plugin itself will provide to make setup easier (in-game setup commands, sample config generation, startup validation messages, /reload command)."
+        ));
 
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");

@@ -91,6 +91,26 @@ public class ImplementerAgent {
         sb.append("### Config Schema\n").append(plan.getConfigSchema()).append("\n\n");
         sb.append("### Dependencies\n").append(plan.getDependencies()).append("\n\n");
 
+        String viability = plan.getViabilityStatus() != null ? plan.getViabilityStatus() : "READY";
+        if (!"READY".equals(viability)) {
+            sb.append("### Viability\n");
+            sb.append("**Status**: ").append(viability).append("\n\n");
+            try {
+                java.util.List<?> steps = objectMapper.readValue(plan.getSetupSteps(), new TypeReference<java.util.List<?>>() {});
+                if (!steps.isEmpty()) {
+                    sb.append("**Admin setup required**:\n");
+                    steps.forEach(s -> sb.append("- ").append(s).append("\n"));
+                    sb.append("\n");
+                }
+                java.util.List<?> handled = objectMapper.readValue(plan.getAutoHandled(), new TypeReference<java.util.List<?>>() {});
+                if (!handled.isEmpty()) {
+                    sb.append("**Plugin must auto-handle (implement each one)**:\n");
+                    handled.forEach(s -> sb.append("- ").append(s).append("\n"));
+                    sb.append("\n");
+                }
+            } catch (Exception ignored) {}
+        }
+
         if (hasClassContracts(plan.getClasses())) {
             sb.append("### Class Contracts (LOCKED — every file must match)\n");
             sb.append("These class definitions were agreed at plan time. Constructor signatures, ")

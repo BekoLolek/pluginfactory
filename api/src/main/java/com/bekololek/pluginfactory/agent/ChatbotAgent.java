@@ -155,6 +155,20 @@ public class ChatbotAgent {
             try {
                 PlanDocument plan = planGenerationAgent.generatePlan(sessionId);
                 content += "\n\nPlan generated: " + plan.getPluginName();
+                String viab = plan.getViabilityStatus() != null ? plan.getViabilityStatus() : "READY";
+                if (!"READY".equals(viab)) {
+                    content += "\n\n**Setup required** (" + viab + "):";
+                    try {
+                        com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+                        java.util.List<?> steps = om.readValue(plan.getSetupSteps(), new com.fasterxml.jackson.core.type.TypeReference<java.util.List<?>>(){});
+                        for (Object s : steps) content += "\n- " + s;
+                        java.util.List<?> handled = om.readValue(plan.getAutoHandled(), new com.fasterxml.jackson.core.type.TypeReference<java.util.List<?>>(){});
+                        if (!handled.isEmpty()) {
+                            content += "\n\nThe plugin will auto-generate:";
+                            for (Object h : handled) content += "\n- " + h;
+                        }
+                    } catch (Exception ignored) {}
+                }
             } catch (Exception e) {
                 log.error("Plan generation failed for session {}", sessionId, e);
                 content += "\n\nPlan generation encountered an issue. Please try revising.";

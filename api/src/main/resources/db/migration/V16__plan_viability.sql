@@ -1,0 +1,3 @@
+ALTER TABLE plan_documents ADD COLUMN IF NOT EXISTS viability_status VARCHAR(20) DEFAULT 'READY';
+ALTER TABLE plan_documents ADD COLUMN IF NOT EXISTS setup_steps TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE plan_documents ADD COLUMN IF NOT EXISTS auto_handled TEXT NOT NULL DEFAULT '[]';

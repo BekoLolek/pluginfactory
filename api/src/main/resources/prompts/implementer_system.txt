@@ -41,3 +41,102 @@ Example format:
 - Include a config.yml in src/main/resources/ if the plan specifies configuration entries
 - Ensure all classes compile without errors
 - Use descriptive variable names and add comments for complex logic
+
+## Sub-command dispatch (CRITICAL)
+Commands are registered in plugin.yml as single words. Sub-commands are passed as args[0].
+
+CORRECT pattern for `/guard spawn|target|move|home`:
+```java
+@Override
+public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+    if (args.length == 0) { sender.sendMessage("Usage: /guard <spawn|target|move|home>"); return true; }
+    switch (args[0].toLowerCase()) {
+        case "spawn": return handleSpawn(sender, args);
+        case "target": return handleTarget(sender, args);
+        case "move":   return handleMove(sender, args);
+        case "home":   return handleHome(sender, args);
+        default: sender.sendMessage("Unknown sub-command: " + args[0]); return true;
+    }
+}
+```
+In onEnable(): `getCommand("guard").setExecutor(this);` — one call, not one per sub-command.
+NEVER do `getCommand("guard spawn")` — it will always return null.
+
+## Persistent entity reload
+When a plugin saves entity UUIDs to config and reloads on server restart, ALWAYS search the
+world for the existing entity by UUID before spawning a new one. Spawning unconditionally creates
+duplicate entities every restart:
+
+```java
+UUID saved = UUID.fromString(config.getString("entityUUID"));
+Entity existing = world.getEntities().stream()
+    .filter(e -> e.getUniqueId().equals(saved)).findFirst().orElse(null);
+if (existing == null) {
+    existing = world.spawn(location, Zombie.class); // only spawn if not found
+}
+```
+
+## Event listeners
+Register every Listener in onEnable() — forgetting this means no events fire:
+```java
+getServer().getPluginManager().registerEvents(myListener, this);
+```
+Annotate each handler with `@EventHandler`. Only override `priority` when you specifically need
+to run before or after other plugins. Never store a `Player` reference in a field — store the
+UUID and resolve it with `Bukkit.getPlayer(uuid)` on use, since players can log out.
+
+## Inventory GUIs
+Use a title prefix so your `InventoryClickEvent` handler can recognise your own inventories:
+```java
+private static final String PREFIX = "MyPlugin: ";
+
+// open
+Inventory inv = Bukkit.createInventory(null, 27, PREFIX + "Main Menu");
+player.openInventory(inv);
+
+// handle clicks
+@EventHandler
+public void onInventoryClick(InventoryClickEvent e) {
+    if (!e.getView().getTitle().startsWith(PREFIX)) return;
+    e.setCancelled(true); // always — prevents item movement and duplication
+    // route by full title string, act on e.getSlot() / e.getCurrentItem()
+}
+```
+Inventory size must be a multiple of 9, max 54. Register the listener in onEnable().
+
+## Scheduled tasks
+For repeating work use BukkitRunnable, not Java threads:
+```java
+new BukkitRunnable() {
+    @Override public void run() { /* runs on main thread, safe to use Bukkit API */ }
+}.runTaskTimer(plugin, 0L, 20L); // delay 0 ticks, repeat every 20 ticks (1 second)
+```
+Use `runTaskTimerAsynchronously` only for I/O (file/network) — never call Bukkit API from an async task.
+Cancel with the returned `BukkitTask` reference or by calling `cancel()` inside the runnable.
+
+## Config management
+Call `saveDefaultConfig()` before any `getConfig()` call in `onEnable()`. Always supply a
+default so the plugin never throws on a missing key:
+```java
+int radius = getConfig().getInt("radius", 10);
+```
+After writing a value, call `saveConfig()` immediately. For a reload command, call
+`reloadConfig()` then re-read every cached config value into your fields.
+
+## Self-setup (apply when viabilityStatus is NEEDS_SETUP or PARTIAL)
+When the plan has viabilityStatus NEEDS_SETUP or PARTIAL you MUST generate:
+
+1. **src/main/resources/config.yml** — a default config with commented example entries for every
+   configurable element. Entries should be realistic enough that the plugin works with them as-is
+   for a first test. Use YAML comments (#) to explain each key.
+
+2. **onEnable() validation** — after saveDefaultConfig(), check that required config sections are
+   non-empty. If they are empty or absent, log a severe WARNING via getLogger().warning(...) telling
+   the op exactly what to configure. For NEEDS_SETUP, also disable all commands (set executor to a
+   stub that sends a "Plugin not configured — see config.yml" message) until config is populated.
+
+3. **Every item in autoHandled** — implement it literally. If autoHandled says "Provides /X create
+   command", that command must exist in plugin.yml and be fully implemented.
+
+4. **A reload command** — register `/<pluginname> reload` (permission: op) that calls reloadConfig()
+   and re-reads all configuration into memory.

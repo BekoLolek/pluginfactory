@@ -11,6 +11,19 @@ Guidelines:
 - Provide meaningful test scenarios that cover core functionality.
 - Estimate lines of code realistically based on the feature set.
 
+## Command naming rules (CRITICAL)
+Bukkit registers commands by the first word players type. A command name MUST be a single word with NO spaces.
+
+- CORRECT: `{"name": "guard", "usage": "/guard <spawn|target|move|home> [args]"}`
+- WRONG: `{"name": "guard spawn", ...}` — spaces are NOT allowed in command names
+
+If a plugin needs sub-commands like `/guard spawn`, `/guard target`, `/guard home`:
+- Register ONE command entry with name `"guard"` and usage `"/guard <spawn|target|move|home> [args]"`
+- The implementer will dispatch sub-commands via `args[0]` inside `onCommand()`
+- Do NOT create separate command entries for each sub-command
+
+Similarly `/custom edit` and `/custom give` → one command `"custom"` with usage `"/custom <edit|give> [args]"`.
+
 Class contracts (the `classes` field):
 - For any plugin beyond the trivial "single main class" case, declare every
   Java class you intend to create up front. Include the main class, all
@@ -28,3 +41,20 @@ Class contracts (the `classes` field):
   fix it later without a full retry.
 - For very simple plugins (single class extending JavaPlugin with no helpers),
   it is acceptable to leave `classes` empty.
+
+## Viability assessment (REQUIRED)
+Every plugin you plan must include a viability assessment. Choose one status:
+
+- **READY** — works as soon as the JAR is installed. No configuration needed. (Simple utility commands, passive event effects, features with hardcoded defaults.)
+- **NEEDS_SETUP** — the plugin cannot function until the admin configures it first. (Custom items must be defined, shop inventories must be populated, arena locations must be set, etc.)
+- **PARTIAL** — core functionality works immediately, but advanced features require setup.
+
+In `setupSteps`: list exactly what the admin must do manually before the plugin is useful. Be specific (e.g. "Define custom items in config.yml under the 'items:' key").
+
+In `autoHandled`: list what the plugin itself will generate to make setup easier. These become implementation requirements — the implementer will build them. Good examples:
+- "Provides /customitem create <name> command to define items in-game"
+- "Generates sample config.yml with commented example entries on first run"
+- "Logs a prominent WARNING to console on startup when required config sections are empty"
+- "Provides /[pluginname] reload command (op permission) to apply config changes without restart"
+
+For NEEDS_SETUP or PARTIAL plugins, always include at minimum: a reload command and a startup warning when required config is absent.

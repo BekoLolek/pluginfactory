@@ -64,6 +64,15 @@ public class PlanDocument extends BaseEntity {
     @Column(nullable = false)
     private int version = 1;
 
+    @Column(name = "viability_status")
+    private String viabilityStatus = "READY";
+
+    @Column(name = "setup_steps", nullable = false, columnDefinition = "TEXT")
+    private String setupSteps = "[]";
+
+    @Column(name = "auto_handled", nullable = false, columnDefinition = "TEXT")
+    private String autoHandled = "[]";
+
     public int getCommandCount() {
         return parseJsonArraySize(commands);
     }

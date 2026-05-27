@@ -19,6 +19,9 @@ public record PlanDocumentDto(
         Integer estimatedLoc,
         Integer complexityScore,
         int version,
-        Instant createdAt
+        Instant createdAt,
+        String viabilityStatus,
+        java.util.List<String> setupSteps,
+        java.util.List<String> autoHandled
 ) {
 }

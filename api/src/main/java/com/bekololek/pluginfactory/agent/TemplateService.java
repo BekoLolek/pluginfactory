@@ -77,6 +77,7 @@ public class TemplateService {
         return files;
     }
 
+
     String toClassName(String pluginName) {
         if (pluginName == null || pluginName.isBlank()) {
             return "GeneratedPlugin";
@@ -216,12 +217,19 @@ public class TemplateService {
             if (commands.isEmpty()) {
                 return "  {}";
             }
+            java.util.Set<String> seenRoots = new java.util.LinkedHashSet<>();
             StringBuilder sb = new StringBuilder();
             for (Map<String, Object> cmd : commands) {
-                String name = (String) cmd.getOrDefault("name", "command");
+                String fullName = (String) cmd.getOrDefault("name", "command");
+                String rootName = fullName.contains(" ") ? fullName.split(" ")[0] : fullName;
+                if (!rootName.equals(fullName)) {
+                    log.warn("Command name has spaces ({}); only root {} will register", fullName, rootName);
+                }
+                if (!seenRoots.add(rootName)) continue;
                 String desc = (String) cmd.getOrDefault("description", "A command");
-                String usage = (String) cmd.getOrDefault("usage", "/" + name);
-                sb.append("  ").append(name).append(":\n");
+                String usage = (String) cmd.getOrDefault("usage", "/" + rootName);
+                if (!usage.startsWith("/" + rootName)) usage = "/" + rootName + " <subcommand> [args]";
+                sb.append("  ").append(rootName).append(":\n");
                 sb.append("    description: \"").append(desc).append("\"\n");
                 sb.append("    usage: \"").append(usage).append("\"\n");
             }
@@ -239,10 +247,12 @@ public class TemplateService {
             if (commands.isEmpty()) {
                 return "  {}";
             }
+            java.util.Set<String> seenPerms = new java.util.LinkedHashSet<>();
             StringBuilder sb = new StringBuilder();
             for (Map<String, Object> cmd : commands) {
                 String name = (String) cmd.getOrDefault("name", "command");
                 String permission = (String) cmd.getOrDefault("permission", "plugin." + name);
+                if (!seenPerms.add(permission)) continue;
                 sb.append("  ").append(permission).append(":\n");
                 sb.append("    description: \"Allows use of /").append(name).append("\"\n");
                 sb.append("    default: op\n");
