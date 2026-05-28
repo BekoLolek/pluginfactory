@@ -174,7 +174,7 @@ public class AdminController {
 
     @PostMapping("/email/send")
     public ResponseEntity<Map<String, String>> sendEmail(@RequestBody AdminSendEmailRequest request) {
-        emailNotificationService.sendManual(request.recipientEmail(), request.template());
+        emailNotificationService.sendManual(request.recipientEmail(), request.template(), request.customMessage());
         return ResponseEntity.ok(Map.of("status", "queued"));
     }
 }

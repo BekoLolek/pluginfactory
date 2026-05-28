@@ -94,7 +94,7 @@ public class EmailNotificationService {
         }
     }
 
-    public void sendManual(String recipientEmail, String template) {
+    public void sendManual(String recipientEmail, String template, String customMessage) {
         String displayName = userRepository.findByEmail(recipientEmail)
                 .map(User::getDisplayName)
                 .orElse(recipientEmail);
@@ -107,12 +107,17 @@ public class EmailNotificationService {
         } else if ("build-failed".equals(template)) {
             vars.put("pluginName", "your plugin");
             vars.put("failureReason", "The build failed during compilation.");
+        } else if ("bugfix-reply-prompt".equals(template)) {
+            vars.put("customMessage", customMessage != null && !customMessage.isBlank()
+                    ? customMessage
+                    : "A bug has been fixed. Please send any message in the chat to continue.");
         }
 
         String subject = switch (template) {
             case "build-success"       -> "Your plugin is ready";
             case "build-failed"        -> "Build failed";
             case "inactivity-reminder" -> "Missing your plugins — come back and build something";
+            case "bugfix-reply-prompt" -> "Action required — send a message to continue";
             default -> throw new IllegalArgumentException("Unknown template: " + template);
         };
 
