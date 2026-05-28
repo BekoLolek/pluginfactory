@@ -95,6 +95,14 @@ public class PlanGenerationAgent {
             messages.add(m);
         }
 
+        // The Anthropic API requires the conversation to end with a user message.
+        // The chatbot saves its transition confirmation as an assistant message
+        // before this call runs, so strip any trailing assistant turns.
+        while (!messages.isEmpty()
+                && "assistant".equals(messages.get(messages.size() - 1).get("role"))) {
+            messages.remove(messages.size() - 1);
+        }
+
         // 4. Call AnthropicClient with forced tool use — model must return structured input
         AnthropicClient.ToolUseResponse response = anthropicClient.sendMessageWithTool(
                 model, systemPrompt, messages, maxTokens,
