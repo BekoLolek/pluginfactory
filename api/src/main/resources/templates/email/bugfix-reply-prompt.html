@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Action required — send a message to continue</title>
+  <title>Message from Plugin Factory</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
@@ -18,41 +18,14 @@
             </td>
           </tr>
 
-          <!-- Accent bar -->
-          <tr>
-            <td style="background:#6366f1;padding:4px 0;"></td>
-          </tr>
-
           <!-- Body -->
           <tr>
             <td style="padding:36px 40px 28px;">
-              <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#18181b;">
-                Bug fixed — your turn
-              </p>
-              <p style="margin:0 0 24px;font-size:15px;color:#52525b;">
-                Hi <span th:text="${displayName}">there</span>,
-              </p>
-              <p style="margin:0 0 20px;font-size:15px;color:#3f3f46;line-height:1.6;"
-                 th:text="${customMessage}">
-                A bug has been fixed. Please send any message in the chat to continue.
-              </p>
-              <p style="margin:0 0 28px;font-size:15px;color:#3f3f46;line-height:1.6;">
-                To resume your build, simply open the chat and send <strong>any message</strong> — that&apos;s all the system needs to pick up where it left off.
-              </p>
-
-              <table cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
-                <tr>
-                  <td style="background:#18181b;border-radius:6px;">
-                    <a th:href="${dashboardUrl}" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
-                      Open dashboard &rarr;
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin:0;font-size:13px;color:#a1a1aa;">
-                If the button doesn&apos;t work, copy this link into your browser:<br/>
-                <a th:href="${dashboardUrl}" th:text="${dashboardUrl}" style="color:#6366f1;word-break:break-all;"></a>
+              <p style="margin:0 0 24px;font-size:15px;color:#3f3f46;line-height:1.7;white-space:pre-line;"
+                 th:text="${customMessage}"></p>
+              <p style="margin:0;font-size:15px;color:#3f3f46;line-height:1.7;">
+                Best,<br/>
+                <strong>Plugin Factory</strong>
               </p>
             </td>
           </tr>
