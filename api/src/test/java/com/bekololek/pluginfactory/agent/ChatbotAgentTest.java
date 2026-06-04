@@ -161,7 +161,9 @@ class ChatbotAgentTest {
         // Assert
         assertNotNull(response);
         assertTrue(response.content().contains("Great, I have enough info to create a plan."));
-        assertTrue(response.content().contains("Plan generated: TeleportPlugin"));
+        // New: a friendly acknowledgment naming the plan is appended/stored.
+        assertTrue(response.content().contains("TeleportPlugin"));
+        assertTrue(response.content().contains("Your plan is ready"));
         assertEquals("PLAN_GENERATION", response.phaseTransition());
         // ChatbotAgent must NOT set PLANNING early — PlanGenerationAgent
         // handles that after the plan row is persisted. Setting it early
@@ -211,7 +213,7 @@ class ChatbotAgentTest {
 
         // Assert: transition cleared, error message appended
         assertNull(response.phaseTransition());
-        assertTrue(response.content().contains("Plan generation encountered an issue"));
+        assertTrue(response.content().contains("hit a snag"));
         // Marker stripped from content
         assertTrue(!response.content().contains("[TRANSITION:PLAN_GENERATION]"));
 
@@ -220,6 +222,48 @@ class ChatbotAgentTest {
         verify(buildSessionService).updateStatus(sessionId, BuildStatus.CHATTING);
         // Phase explicitly reset
         verify(buildSessionService).updatePhase(sessionId, BuildPhase.CLARIFICATION);
+    }
+
+    @Test
+    void handleMessageStripsEmulatedToolCallAndTriggersPlan() {
+        // Regression for the prompt/tool mismatch: when the model emulates a
+        // `submit_plan` tool call as raw text (instead of emitting the marker),
+        // the dump must NOT reach the chat history, and it must still be treated
+        // as a plan-generation trigger.
+        String userMessage = "build it";
+        BuildSession session = createSession(BuildStatus.PLANNING, BuildPhase.PLAN_REVIEW);
+        TokenBudget budget = createBudget(100000, 5000);
+
+        PlanDocument generatedPlan = new PlanDocument();
+        generatedPlan.setPluginName("TeleportPlugin");
+
+        String leaked = "<submit_plan>\n{\n  \"pluginName\": \"TeleportPlugin\"\n}\n</submit_plan>";
+
+        when(promptSanitizer.sanitize(userMessage))
+                .thenReturn(new PromptSanitizer.SanitizationResult(userMessage, Collections.emptyList()));
+        when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
+        when(tokenBudgetService.getRemainingBudget(sessionId)).thenReturn(budget);
+        when(tokenBudgetService.hasBudget(sessionId, 100)).thenReturn(true);
+        when(modelRouter.selectModel(any())).thenReturn("claude-haiku-4-5");
+        when(modelRouter.getMaxTokens(any())).thenReturn(2048);
+        when(chatMessageService.getMessages(sessionId)).thenReturn(Collections.emptyList());
+        when(anthropicClient.sendMessage(anyString(), anyString(), anyList(), anyInt()))
+                .thenReturn(new AnthropicResponse(leaked, "claude-haiku-4-5", 100, 50));
+        when(planGenerationAgent.generatePlan(sessionId)).thenReturn(generatedPlan);
+
+        AgentResponse response = chatbotAgent.handleMessage(sessionId, userId, userMessage);
+
+        // Treated as a plan trigger even though there was no marker.
+        assertEquals("PLAN_GENERATION", response.phaseTransition());
+        verify(planGenerationAgent).generatePlan(sessionId);
+        // The leaked tool-call text never appears in the response...
+        assertTrue(!response.content().contains("submit_plan"));
+        assertTrue(response.content().contains("TeleportPlugin")); // the acknowledgment
+        // ...nor is any assistant message containing it ever stored.
+        verify(chatMessageService, never()).addMessage(
+                eq(sessionId), eq("assistant"),
+                org.mockito.ArgumentMatchers.argThat(s -> s != null && s.contains("submit_plan")),
+                any(), anyInt());
     }
 
     @Test

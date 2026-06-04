@@ -39,6 +39,19 @@ public class ChatbotAgent {
     private static final Pattern CODE_BLOCK_PATTERN =
             Pattern.compile("```[\\s\\S]*?```");
 
+    /**
+     * Matches the start of a tool-call the model emulates as raw TEXT when it
+     * was instructed to call a tool but the request provided none. Claude
+     * improvises several shapes — {@code <submit_plan>}, {@code <function_calls>
+     * <invoke name="submit_plan">}, {@code <simulate_tool_call>submit_plan({…})},
+     * {@code <trigger_plan_submission>} — and may also leak a {@code <thinking>}
+     * block. Everything from the first such marker onward is garbage and must
+     * never reach the chat history.
+     */
+    private static final Pattern TOOL_CALL_MARKER = Pattern.compile(
+            "(?is)<\\s*(submit_plan|trigger_plan_submission|function_calls|invoke|simulate_tool_call|thinking)\\b"
+                    + "|submit_plan\\s*\\(");
+
     private final AnthropicClient anthropicClient;
     private final ChatMessageService chatMessageService;
     private final TokenBudgetService tokenBudgetService;
@@ -47,7 +60,6 @@ public class ChatbotAgent {
     private final PromptSanitizer promptSanitizer;
     private final PlanGenerationAgent planGenerationAgent;
     private final String chatbotSystemPrompt;
-    private final String planGenerationSystemPrompt;
 
     public ChatbotAgent(AnthropicClient anthropicClient,
                         ChatMessageService chatMessageService,
@@ -64,7 +76,6 @@ public class ChatbotAgent {
         this.promptSanitizer = promptSanitizer;
         this.planGenerationAgent = planGenerationAgent;
         this.chatbotSystemPrompt = loadPrompt("prompts/chatbot_system.txt");
-        this.planGenerationSystemPrompt = loadPrompt("prompts/plan_generation_system.txt");
     }
 
     private String loadPrompt(String path) throws IOException {
@@ -121,60 +132,63 @@ public class ChatbotAgent {
         // 8. Call AnthropicClient
         AnthropicResponse response = anthropicClient.sendMessage(model, systemPrompt, messages, maxTokens);
 
-        // 9. Strip transition marker BEFORE storing so the raw marker text
-        //    never appears in the chat history or the UI.
+        // 9. Detect plan-generation intent and clean the reply BEFORE storing.
+        //    The model signals readiness with the [TRANSITION:PLAN_GENERATION]
+        //    marker. When it goes off-script it instead emulates a `submit_plan`
+        //    tool call as raw text. Treat either signal as the trigger, and
+        //    never let the raw marker or the emulated tool-call text reach the
+        //    chat history.
         String content = response.content();
-        String phaseTransition = null;
-        if (content.contains(TRANSITION_MARKER)) {
-            content = content.replace(TRANSITION_MARKER, "").trim();
-            phaseTransition = "PLAN_GENERATION";
-        }
+        boolean emulatedToolCall = content != null && TOOL_CALL_MARKER.matcher(content).find();
+        boolean wantsPlan = (content != null && content.contains(TRANSITION_MARKER)) || emulatedToolCall;
+        String phaseTransition = wantsPlan ? "PLAN_GENERATION" : null;
 
-        // 9b. During clarification, strip any code blocks the AI produced
-        //     despite being told not to. This is a server-side safety net.
+        if (content != null) {
+            content = content.replace(TRANSITION_MARKER, "");
+        }
+        content = stripToolCallEmulation(content);
+        // During clarification, strip any code blocks the AI produced despite
+        // being told not to. This is a server-side safety net.
         if (session.getCurrentPhase() == BuildPhase.CLARIFICATION) {
             content = stripCodeBlocks(content);
         }
+        content = content == null ? "" : content.trim();
+        // If the model produced nothing usable and isn't transitioning, ask a
+        // gentle follow-up rather than storing an empty assistant turn.
+        if (content.isBlank() && phaseTransition == null) {
+            content = "Could you share a bit more detail so I can refine the plan?";
+        }
 
-        // 10. Store both user message and assistant response (cleaned)
+        // 10. Store the user message and the cleaned assistant reply (if any).
         int totalTokens = response.inputTokens() + response.outputTokens();
         chatMessageService.addMessage(sessionId, "user", cleanMessage, null, 0);
-        chatMessageService.addMessage(sessionId, "assistant", content, response.model(), totalTokens);
+        if (!content.isBlank()) {
+            chatMessageService.addMessage(sessionId, "assistant", content, response.model(), totalTokens);
+        }
 
         // 11. Update token consumption
         String tokenPhase = mapPhaseToTokenPhase(session.getCurrentPhase());
         tokenBudgetService.consumeTokens(sessionId, tokenPhase, totalTokens);
 
-        // 12. If the AI signaled readiness, trigger plan generation.
-        //     We do NOT set status = PLANNING here — PlanGenerationAgent
-        //     sets both status (PLANNING) and phase (PLAN_REVIEW) AFTER the
-        //     plan is persisted. Setting it early caused a race: the
-        //     frontend would poll, see PLANNING, fire GET /plan, and get a
-        //     404 because the plan row didn't exist yet.
+        // 12. If the AI signaled readiness, generate the plan and post a visible
+        //     acknowledgment so the conversation reflects what happened. We do
+        //     NOT set status = PLANNING here — PlanGenerationAgent sets status
+        //     and phase AFTER the plan row is persisted (avoids a poll/404 race).
         if (phaseTransition != null) {
             try {
                 PlanDocument plan = planGenerationAgent.generatePlan(sessionId);
-                content += "\n\nPlan generated: " + plan.getPluginName();
-                String viab = plan.getViabilityStatus() != null ? plan.getViabilityStatus() : "READY";
-                if (!"READY".equals(viab)) {
-                    content += "\n\n**Setup required** (" + viab + "):";
-                    try {
-                        com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
-                        java.util.List<?> steps = om.readValue(plan.getSetupSteps(), new com.fasterxml.jackson.core.type.TypeReference<java.util.List<?>>(){});
-                        for (Object s : steps) content += "\n- " + s;
-                        java.util.List<?> handled = om.readValue(plan.getAutoHandled(), new com.fasterxml.jackson.core.type.TypeReference<java.util.List<?>>(){});
-                        if (!handled.isEmpty()) {
-                            content += "\n\nThe plugin will auto-generate:";
-                            for (Object h : handled) content += "\n- " + h;
-                        }
-                    } catch (Exception ignored) {}
-                }
+                String ack = PlanGenerationAgent.buildAcknowledgment(plan);
+                chatMessageService.addMessage(sessionId, "assistant", ack, null, 0);
+                content = content.isBlank() ? ack : content + "\n\n" + ack;
             } catch (Exception e) {
                 log.error("Plan generation failed for session {}", sessionId, e);
-                content += "\n\nPlan generation encountered an issue. Please try revising.";
-                // Ensure we stay in CHATTING / CLARIFICATION so the user
-                // can keep refining. PlanGenerationAgent may have partially
-                // updated status before throwing, so reset explicitly.
+                String failMsg = "I hit a snag while putting your plan together. "
+                        + "Please send your request again in a moment and I'll retry.";
+                chatMessageService.addMessage(sessionId, "assistant", failMsg, null, 0);
+                content = content.isBlank() ? failMsg : content + "\n\n" + failMsg;
+                // Stay in CHATTING / CLARIFICATION so the user can keep refining.
+                // PlanGenerationAgent may have partially updated status before
+                // throwing, so reset explicitly.
                 buildSessionService.updateStatus(sessionId, BuildStatus.CHATTING);
                 buildSessionService.updatePhase(sessionId, BuildPhase.CLARIFICATION);
                 phaseTransition = null;
@@ -225,15 +239,36 @@ public class ChatbotAgent {
         return stripped;
     }
 
-    private String resolveSystemPrompt(BuildSession session, int remainingTokens) {
-        String template;
-        if (session.getCurrentPhase() == BuildPhase.PLAN_GENERATION
-                || session.getCurrentPhase() == BuildPhase.PLAN_REVIEW) {
-            template = planGenerationSystemPrompt;
-        } else {
-            template = chatbotSystemPrompt;
+    /**
+     * Removes any tool-call the model emulated as raw text. First strips paired
+     * {@code <thinking>…</thinking>} blocks, then cuts everything from the first
+     * residual tool-call/thinking marker to the end of the message. Belt-and-
+     * suspenders alongside the prompt fix: the conversational call now uses the
+     * tool-free chatbot prompt, so this should rarely fire — but if it ever
+     * does, a stray {@code submit_plan} dump can never reach a user.
+     */
+    private String stripToolCallEmulation(String content) {
+        if (content == null) {
+            return "";
         }
-        return template
+        String result = content.replaceAll("(?is)<thinking>.*?</thinking>", "");
+        java.util.regex.Matcher m = TOOL_CALL_MARKER.matcher(result);
+        if (m.find()) {
+            log.warn("Stripped emulated tool-call text from AI chat response");
+            result = result.substring(0, m.start());
+        }
+        return result.replaceAll("\\n{3,}", "\n\n").trim();
+    }
+
+    private String resolveSystemPrompt(BuildSession session, int remainingTokens) {
+        // Always use the conversational prompt for chat turns. The
+        // plan-generation prompt is tool-only ("call the submit_plan tool")
+        // and MUST NOT be used with the no-tool sendMessage — doing so makes
+        // the model emit a fake tool call as text that leaks into the chat.
+        // The chatbot prompt is phase-aware (it knows about PLAN_REVIEW) and
+        // drives real plan generation via the [TRANSITION:PLAN_GENERATION]
+        // marker, which routes to PlanGenerationAgent's forced tool-use call.
+        return chatbotSystemPrompt
                 .replace("{{phase}}", session.getCurrentPhase().name())
                 .replace("{{status}}", session.getStatus().name())
                 .replace("{{remaining_tokens}}", String.valueOf(remainingTokens));

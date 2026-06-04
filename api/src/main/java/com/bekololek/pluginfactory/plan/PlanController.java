@@ -89,8 +89,8 @@ public class PlanController {
     }
 
     @PostMapping("/{sessionId}/plan/revise")
-    public ResponseEntity<PlanDocumentDto> revisePlan(@PathVariable UUID sessionId,
-                                                       @Valid @RequestBody PlanRevisionRequest request) {
+    public ResponseEntity<?> revisePlan(@PathVariable UUID sessionId,
+                                        @Valid @RequestBody PlanRevisionRequest request) {
         UUID userId = AuthenticatedUser.getCurrentUserId();
         buildSessionService.getSession(sessionId, userId); // validate ownership
 
@@ -101,10 +101,28 @@ public class PlanController {
         // Add feedback as user message
         chatMessageService.addMessage(sessionId, "user", request.feedback(), null, 0);
 
-        // Re-trigger plan generation
-        PlanDocument revised = planGenerationAgent.generatePlan(sessionId);
-
-        return ResponseEntity.ok(toDto(revised));
+        try {
+            // Re-trigger plan generation (forced tool-use, structured output).
+            PlanDocument revised = planGenerationAgent.generatePlan(sessionId);
+            // Post a visible acknowledgment so the conversation reflects the
+            // revision — without this the chat shows the user's request with no
+            // reply, even though the plan was updated.
+            chatMessageService.addMessage(sessionId, "assistant",
+                    PlanGenerationAgent.buildAcknowledgment(revised), null, 0);
+            return ResponseEntity.ok(toDto(revised));
+        } catch (RuntimeException e) {
+            // Tell the user (in chat) what happened and leave the existing plan
+            // intact and approvable instead of stranding the session mid-phase.
+            chatMessageService.addMessage(sessionId, "assistant",
+                    "I couldn't update the plan just now. Please send your change again "
+                            + "in a moment and I'll retry — your current plan is unchanged.",
+                    null, 0);
+            buildSessionService.updateStatus(sessionId, BuildStatus.PLANNING);
+            buildSessionService.updatePhase(sessionId, BuildPhase.PLAN_REVIEW);
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(java.util.Map.of("message",
+                            "Plan revision is temporarily unavailable. Please try again."));
+        }
     }
 
     private PlanDocumentDto toDto(PlanDocument plan) {

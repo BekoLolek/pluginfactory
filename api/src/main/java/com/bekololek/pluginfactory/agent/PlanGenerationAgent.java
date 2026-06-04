@@ -168,6 +168,33 @@ public class PlanGenerationAgent {
         return planDocumentRepository.save(plan);
     }
 
+    /**
+     * Friendly, user-facing chat message announcing that a plan was generated
+     * or revised. Stored as an assistant message so the conversation reflects
+     * what happened — without this, plan generation/revision is invisible in
+     * the transcript (the structured plan goes to its own panel) and the chat
+     * looks one-sided ("user spoke, AI never replied").
+     */
+    public static String buildAcknowledgment(PlanDocument plan) {
+        String name = plan.getPluginName() != null && !plan.getPluginName().isBlank()
+                ? plan.getPluginName() : "your plugin";
+        String versionNote = plan.getVersion() > 1 ? " (updated to v" + plan.getVersion() + ")" : "";
+        int cmds = plan.getCommandCount();
+        int events = plan.getEventListenerCount();
+        StringBuilder sb = new StringBuilder();
+        sb.append("✅ Your plan is ready").append(versionNote).append(": **").append(name).append("**")
+          .append(" — ").append(cmds).append(cmds == 1 ? " command" : " commands")
+          .append(", ").append(events).append(events == 1 ? " event listener" : " event listeners").append('.')
+          .append("\n\nReview it in the plan panel, then approve it to start the build — "
+                  + "or tell me what you'd like to change.");
+        String viab = plan.getViabilityStatus();
+        if (viab != null && !"READY".equalsIgnoreCase(viab)) {
+            sb.append("\n\n⚠ This plugin needs some setup before it works fully (")
+              .append(viab).append("). The required steps are listed in the plan.");
+        }
+        return sb.toString();
+    }
+
     static Map<String, Object> planToolSchema() {
         Map<String, Object> commandItem = Map.of(
                 "type", "object",
