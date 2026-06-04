@@ -1,7 +1,10 @@
 package com.bekololek.pluginfactory.admin;
 
 import com.bekololek.pluginfactory.admin.dto.*;
+import com.bekololek.pluginfactory.agent.ChatbotAgent;
+import com.bekololek.pluginfactory.agent.dto.AgentResponse;
 import com.bekololek.pluginfactory.build.*;
+import com.bekololek.pluginfactory.build.dto.ChatMessageDto;
 import com.bekololek.pluginfactory.common.exception.NotFoundException;
 import com.bekololek.pluginfactory.common.exception.ValidationException;
 import com.bekololek.pluginfactory.marketplace.MarketplaceListing;
@@ -25,6 +28,7 @@ import com.bekololek.pluginfactory.user.UserRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -43,6 +47,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@Slf4j
 public class AdminService {
 
     private final UserRepository userRepository;
@@ -60,6 +65,8 @@ public class AdminService {
     private final PlanDocumentRepository planDocumentRepository;
     private final BuildSessionService buildSessionService;
     private final TokenBudgetService tokenBudgetService;
+    private final ChatMessageService chatMessageService;
+    private final ChatbotAgent chatbotAgent;
     private final ObjectMapper objectMapper;
 
     // ── Overview ──────────────────────────────────────────────────────
@@ -347,6 +354,48 @@ public class AdminService {
         PlanDocument plan = planDocumentRepository.findBySessionId(sessionId)
                 .orElseThrow(() -> new NotFoundException("Plan not found for this session"));
         return toPlanDto(plan);
+    }
+
+    // ── Chat (admin viewer + send-as-user) ────────────────────────────
+
+    /** Full conversation transcript for a session, oldest message first. */
+    public List<ChatMessageDto> getSessionMessages(UUID sessionId) {
+        if (buildSessionRepository.findById(sessionId).isEmpty()) {
+            throw new NotFoundException("Build session not found");
+        }
+        return chatMessageService.getMessages(sessionId).stream()
+                .map(m -> new ChatMessageDto(
+                        m.getId(), m.getRole(), m.getContent(),
+                        m.getModelUsed(), m.getTokensConsumed(), m.getCreatedAt()))
+                .toList();
+    }
+
+    /**
+     * Inject a message into a user's session as if the user sent it, so the
+     * chatbot agent responds and the pipeline advances (e.g. nudging a stalled
+     * clarification toward plan generation). The injected message is stored
+     * with role {@code "user"} and the session owner's token budget is charged,
+     * exactly like a real user message.
+     *
+     * <p>{@code NOT_SUPPORTED} suspends this class's read-only transaction:
+     * {@link ChatbotAgent#handleMessage} is a long-running call (it hits the
+     * Anthropic API and may take ~90s when it generates a plan) whose child
+     * services each manage their own short write transactions — the same way
+     * the non-transactional {@code ChatController} invokes it. Running it
+     * inside the class-level read-only tx would fail those child writes.
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AgentResponse sendMessageAsUser(UUID sessionId, String content) {
+        BuildSession session = buildSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new NotFoundException("Build session not found"));
+        if (session.getStatus() != BuildStatus.CHATTING
+                && session.getStatus() != BuildStatus.PLANNING) {
+            throw new ValidationException(
+                    "Session is not in a chat-eligible state (current: " + session.getStatus()
+                    + "). Only CHATTING or PLANNING sessions accept messages.");
+        }
+        log.info("Admin sending message as user {} for session {}", session.getUserId(), sessionId);
+        return chatbotAgent.handleMessage(sessionId, session.getUserId(), content);
     }
 
     private PlanDocumentDto toPlanDto(PlanDocument plan) {

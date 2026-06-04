@@ -1,10 +1,13 @@
 package com.bekololek.pluginfactory.admin;
 
 import com.bekololek.pluginfactory.admin.dto.*;
+import com.bekololek.pluginfactory.agent.dto.AgentResponse;
 import com.bekololek.pluginfactory.build.BuildIteration;
 import com.bekololek.pluginfactory.email.EmailNotificationService;
 import com.bekololek.pluginfactory.build.dto.BuildIterationDto;
+import com.bekololek.pluginfactory.build.dto.ChatMessageDto;
 import com.bekololek.pluginfactory.plan.dto.PlanDocumentDto;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -130,6 +133,25 @@ public class AdminController {
     @GetMapping("/builds/{sessionId}/plan")
     public ResponseEntity<PlanDocumentDto> getSessionPlan(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(adminService.getSessionPlan(sessionId));
+    }
+
+    /** Read a session's full chat transcript (oldest first). */
+    @GetMapping("/builds/{sessionId}/messages")
+    public ResponseEntity<List<ChatMessageDto>> getSessionMessages(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(adminService.getSessionMessages(sessionId));
+    }
+
+    /**
+     * Send a message into a session as if the user sent it. The chatbot agent
+     * responds and the pipeline advances; the session owner's token budget is
+     * charged. Only valid while the session is CHATTING or PLANNING. May block
+     * up to ~90s when the message triggers plan generation.
+     */
+    @PostMapping("/builds/{sessionId}/messages")
+    public ResponseEntity<AgentResponse> sendMessageAsUser(
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody AdminSendMessageRequest request) {
+        return ResponseEntity.ok(adminService.sendMessageAsUser(sessionId, request.content()));
     }
 
     /**
