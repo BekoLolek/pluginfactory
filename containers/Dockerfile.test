@@ -1,18 +1,38 @@
-FROM eclipse-temurin:17-jre-jammy
+# Headless Paper server used for the runtime smoke test. The TEST container
+# runs with network=none, so Paper's first-run downloads (the patched vanilla
+# server + libraries) and world generation are BAKED here at image-build time,
+# when network is available. At test time the server starts fully offline.
+FROM eclipse-temurin:21-jre-jammy
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-ARG PAPER_VERSION=1.20.4
-ARG PAPER_BUILD=496
-RUN mkdir -p /server && \
-    curl -o /server/paper.jar \
-    "https://api.papermc.io/v2/projects/paper/versions/${PAPER_VERSION}/builds/${PAPER_BUILD}/downloads/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar" || true
-
-RUN useradd -r -m tester
 WORKDIR /server
-RUN echo "eula=true" > eula.txt && chown -R tester:tester /server
-USER tester
-VOLUME /server/plugins
+ARG PAPER_VERSION=1.21.4
 
+# Download the latest Paper build for the target version.
+RUN set -eux; \
+    BUILD="$(curl -fsSL "https://api.papermc.io/v2/projects/paper/versions/${PAPER_VERSION}/builds" \
+        | tr ',' '\n' | grep -o '"build":[0-9]*' | grep -o '[0-9]*' | tail -1)"; \
+    curl -fsSL -o paper.jar \
+        "https://api.papermc.io/v2/projects/paper/versions/${PAPER_VERSION}/builds/${BUILD}/downloads/paper-${PAPER_VERSION}-${BUILD}.jar"; \
+    echo "eula=true" > eula.txt; \
+    printf 'level-type=minecraft:flat\nonline-mode=false\nspawn-protection=0\nview-distance=4\nsimulation-distance=4\nmax-players=2\nspawn-npcs=false\nspawn-animals=false\nspawn-monsters=false\ngenerate-structures=false\nmotd=pf-test\n' > server.properties
+
+# Bake: first run downloads + patches the server jar and generates the flat
+# spawn, then we stop it. Everything persists in the image layer.
+RUN set -eux; \
+    java -Xmx1024m -XX:+UseSerialGC -jar paper.jar --nogui > /server/boot.log 2>&1 & \
+    PID=$!; \
+    for i in $(seq 1 300); do \
+        grep -q 'Done (' /server/boot.log && break; \
+        kill -0 $PID 2>/dev/null || break; \
+        sleep 1; \
+    done; \
+    (kill $PID 2>/dev/null || true); sleep 5; (kill -9 $PID 2>/dev/null || true); \
+    grep -q 'Done (' /server/boot.log || { echo '--- Paper failed to bake ---'; tail -n 60 /server/boot.log; exit 1; }; \
+    rm -f /server/boot.log
+
+RUN useradd -r -m tester && mkdir -p /server/plugins && chown -R tester:tester /server
+USER tester
 CMD ["tail", "-f", "/dev/null"]

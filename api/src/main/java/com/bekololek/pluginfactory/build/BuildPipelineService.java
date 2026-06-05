@@ -11,13 +11,16 @@ import com.bekololek.pluginfactory.container.ContainerSession;
 import com.bekololek.pluginfactory.container.ContainerSessionRepository;
 import com.bekololek.pluginfactory.container.DockerService;
 import com.bekololek.pluginfactory.container.ExecResult;
+import com.bekololek.pluginfactory.container.TestServerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -47,6 +50,7 @@ public class BuildPipelineService {
     private final RetryPolicy retryPolicy;
     private final ChatMessageService chatMessageService;
     private final EmailNotificationService emailNotificationService;
+    private final TestServerService testServerService;
 
     /**
      * Runs the full build pipeline off the request thread.
@@ -133,44 +137,16 @@ public class BuildPipelineService {
 
             byte[] jarBytes = compileInContainer(sessionId, iterationId, files);
 
-            // Phase 3: SECURITY_SCAN
-            buildSessionService.updatePhase(sessionId, BuildPhase.SECURITY_SCAN);
-            buildProgressService.notifyPhaseChange(sessionId, BuildPhase.SECURITY_SCAN);
-
-            String allSource = concatenateSource(files);
-            SecurityScanResult scanResult = securityScanService.scanSource(allSource);
-            if (!scanResult.passed()) {
-                throw new SecurityViolationException(scanResult.violations());
-            }
-
-            // Create source ZIP
-            byte[] sourceZipBytes = createSourceZip(files);
-
-            // Extract plugin.yml
-            String pluginYml = extractPluginYml(files);
-
-            // Phase 4: DELIVERING
-            buildSessionService.updatePhase(sessionId, BuildPhase.DELIVERING);
-            buildProgressService.notifyPhaseChange(sessionId, BuildPhase.DELIVERING);
-
-            artifactService.storeArtifact(sessionId, iterationId, jarBytes, sourceZipBytes,
-                    pluginYml, scanResult.passed());
-
-            // Complete
-            iteration.setStatus("COMPLETED");
-            iteration.setCompletedAt(Instant.now());
-            buildIterationRepository.save(iteration);
-
-            buildSessionService.updateStatus(sessionId, BuildStatus.COMPLETED);
-            buildSessionService.updatePhase(sessionId, BuildPhase.IDLE);
-            buildProgressService.notifyStatusChange(sessionId, BuildStatus.COMPLETED);
-            emailNotificationService.notifyBuildSuccess(sessionId);
-
-            log.info("Build completed successfully for session {}", sessionId);
+            // Phases 3-5: security scan, runtime smoke test, deliver, complete.
+            finalizeBuild(sessionId, iteration, files, jarBytes);
 
         } catch (CompilationException e) {
             log.error("Compilation failed for session {}: {}", sessionId, e.getMessage());
             handleBuildError(iteration, sessionId, "COMPILATION", e.getMessage(), e);
+
+        } catch (RuntimeTestException e) {
+            log.error("Runtime test failed for session {}: {}", sessionId, e.getMessage());
+            handleBuildError(iteration, sessionId, "RUNTIME", e.getMessage(), e);
 
         } catch (SecurityViolationException e) {
             log.error("Security scan failed for session {}: {}", sessionId, e.getMessage());
@@ -180,6 +156,68 @@ public class BuildPipelineService {
             log.error("Build failed for session {}: {}", sessionId, e.getMessage(), e);
             handleBuildError(iteration, sessionId, "GENERAL", e.getMessage(), e);
         }
+    }
+
+    /**
+     * Shared build tail: security scan -> runtime smoke test -> deliver ->
+     * mark complete. Used by both the first build and auto-retries so neither
+     * can skip the smoke test. Throws {@link SecurityViolationException} or
+     * {@link RuntimeTestException} which the callers route to handleBuildError.
+     */
+    private void finalizeBuild(UUID sessionId, BuildIteration iteration,
+                               Map<String, String> files, byte[] jarBytes) {
+        // SECURITY_SCAN
+        buildSessionService.updatePhase(sessionId, BuildPhase.SECURITY_SCAN);
+        buildProgressService.notifyPhaseChange(sessionId, BuildPhase.SECURITY_SCAN);
+        String allSource = concatenateSource(files);
+        SecurityScanResult scanResult = securityScanService.scanSource(allSource);
+        if (!scanResult.passed()) {
+            throw new SecurityViolationException(scanResult.violations());
+        }
+
+        // INTEGRATION_TEST — load the JAR on a real Paper server and confirm
+        // it enables cleanly. Catches runtime failures compilation misses.
+        buildSessionService.updatePhase(sessionId, BuildPhase.INTEGRATION_TEST);
+        buildProgressService.notifyPhaseChange(sessionId, BuildPhase.INTEGRATION_TEST);
+        String pluginName = pluginNameFor(files);
+        TestServerService.SmokeResult smoke = testServerService.runSmokeTest(jarBytes, pluginName);
+        if (!smoke.passed()) {
+            throw new RuntimeTestException(smoke.detail());
+        }
+        log.info("Runtime smoke test passed for session {}: {}", sessionId, smoke.detail());
+
+        // DELIVERING
+        buildSessionService.updatePhase(sessionId, BuildPhase.DELIVERING);
+        buildProgressService.notifyPhaseChange(sessionId, BuildPhase.DELIVERING);
+        byte[] sourceZipBytes = createSourceZip(files);
+        String pluginYml = extractPluginYml(files);
+        artifactService.storeArtifact(sessionId, iteration.getId(), jarBytes, sourceZipBytes,
+                pluginYml, scanResult.passed());
+
+        iteration.setStatus("COMPLETED");
+        iteration.setCompletedAt(Instant.now());
+        buildIterationRepository.save(iteration);
+
+        buildSessionService.updateStatus(sessionId, BuildStatus.COMPLETED);
+        buildSessionService.updatePhase(sessionId, BuildPhase.IDLE);
+        buildProgressService.notifyStatusChange(sessionId, BuildStatus.COMPLETED);
+        emailNotificationService.notifyBuildSuccess(sessionId);
+
+        log.info("Build completed successfully for session {}", sessionId);
+    }
+
+    /** Plugin name from the generated plugin.yml (for the smoke-test log match). */
+    private String pluginNameFor(Map<String, String> files) {
+        String yml = extractPluginYml(files);
+        if (yml != null) {
+            for (String line : yml.split("\n")) {
+                String t = line.trim();
+                if (t.startsWith("name:")) {
+                    return t.substring(5).trim().replace("\"", "").replace("'", "");
+                }
+            }
+        }
+        return "plugin";
     }
 
     private byte[] compileInContainer(UUID sessionId, UUID iterationId,
@@ -224,11 +262,25 @@ public class BuildPipelineService {
                                 buildResult.stderr() + buildResult.stdout());
             }
 
-            // Extract the JAR
-            byte[] jarTar = dockerService.copyFromContainer(containerId,
-                    "/plugin-workspace/target/");
-
-            return jarTar;
+            // Locate the shaded plugin jar (largest, excluding the pre-shade
+            // original-*, -sources, and -javadoc jars) and copy just that file.
+            // Copying a single file yields a one-entry tar, which we read
+            // without commons-compress's multi-entry skip path. Previously the
+            // whole target/ tar was stored verbatim as "plugin.jar" — a tarball,
+            // not a loadable jar.
+            ExecResult find = dockerService.executeCommand(containerId, "sh", "-c",
+                    "ls -S /plugin-workspace/target/*.jar 2>/dev/null "
+                            + "| grep -vE 'original-|-sources\\.jar|-javadoc\\.jar' | head -n1");
+            String jarPath = find.stdout().trim();
+            if (jarPath.isEmpty()) {
+                throw new CompilationException(
+                        "Build succeeded but produced no plugin JAR in target/.");
+            }
+            byte[] jar = firstTarEntryBytes(dockerService.copyFromContainer(containerId, jarPath));
+            if (jar == null) {
+                throw new CompilationException("Could not read the produced plugin JAR.");
+            }
+            return jar;
 
         } finally {
             // Release container back to pool
@@ -307,39 +359,16 @@ public class BuildPipelineService {
 
             byte[] jarBytes = compileInContainer(sessionId, retryIterationId, files);
 
-            // Re-run security scan
-            buildSessionService.updatePhase(sessionId, BuildPhase.SECURITY_SCAN);
-            buildProgressService.notifyPhaseChange(sessionId, BuildPhase.SECURITY_SCAN);
-
-            String allSource = concatenateSource(files);
-            SecurityScanResult scanResult = securityScanService.scanSource(allSource);
-            if (!scanResult.passed()) {
-                throw new SecurityViolationException(scanResult.violations());
-            }
-
-            byte[] sourceZipBytes = createSourceZip(files);
-            String pluginYml = extractPluginYml(files);
-
-            buildSessionService.updatePhase(sessionId, BuildPhase.DELIVERING);
-            buildProgressService.notifyPhaseChange(sessionId, BuildPhase.DELIVERING);
-
-            artifactService.storeArtifact(sessionId, retryIterationId, jarBytes, sourceZipBytes,
-                    pluginYml, scanResult.passed());
-
-            retryIteration.setStatus("COMPLETED");
-            retryIteration.setCompletedAt(Instant.now());
-            buildIterationRepository.save(retryIteration);
-
-            buildSessionService.updateStatus(sessionId, BuildStatus.COMPLETED);
-            buildSessionService.updatePhase(sessionId, BuildPhase.IDLE);
-            buildProgressService.notifyStatusChange(sessionId, BuildStatus.COMPLETED);
-            emailNotificationService.notifyBuildSuccess(sessionId);
-
-            log.info("Retry build completed successfully for session {}", sessionId);
+            // Phases 3-5: security scan, runtime smoke test, deliver, complete.
+            finalizeBuild(sessionId, retryIteration, files, jarBytes);
 
         } catch (CompilationException ce) {
             log.error("Retry compilation failed for session {}: {}", sessionId, ce.getMessage());
             handleBuildError(retryIteration, sessionId, "COMPILATION", ce.getMessage(), ce);
+
+        } catch (RuntimeTestException re) {
+            log.error("Retry runtime test failed for session {}: {}", sessionId, re.getMessage());
+            handleBuildError(retryIteration, sessionId, "RUNTIME", re.getMessage(), re);
 
         } catch (SecurityViolationException se) {
             log.error("Retry security scan failed for session {}: {}", sessionId, se.getMessage());
@@ -348,6 +377,23 @@ public class BuildPipelineService {
         } catch (Exception ex) {
             log.error("Retry build failed for session {}: {}", sessionId, ex.getMessage(), ex);
             handleBuildError(retryIteration, sessionId, "GENERAL", ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Reads the bytes of the first entry of a single-file tar (as Docker's
+     * copy-from-container returns for one file). Only the first entry is read,
+     * so commons-compress never invokes its multi-entry skip path.
+     */
+    static byte[] firstTarEntryBytes(byte[] tar) {
+        try (TarArchiveInputStream tis =
+                     new TarArchiveInputStream(new ByteArrayInputStream(tar))) {
+            if (tis.getNextEntry() == null) {
+                return null;
+            }
+            return tis.readAllBytes();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read jar tar", e);
         }
     }
 

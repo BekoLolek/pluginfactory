@@ -215,7 +215,7 @@ class AdminServiceRecoveryTest {
 
         assertThatThrownBy(() -> adminService.retriggerFailedBuild(sessionId))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("Only FAILED sessions can be retriggered");
+                .hasMessageContaining("cannot be retriggered in current state");
         verify(buildSessionService, never()).updateStatus(any(), any());
         verify(failedBuildRecoveryService, never()).adminRecover(any());
     }

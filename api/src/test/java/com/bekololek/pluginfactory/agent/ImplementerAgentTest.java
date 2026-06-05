@@ -2,6 +2,7 @@ package com.bekololek.pluginfactory.agent;
 
 import com.bekololek.pluginfactory.plan.PlanDocument;
 import com.bekololek.pluginfactory.plan.PlanDocumentRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,7 +36,7 @@ class ImplementerAgentTest {
         // and extends/implements relations stay consistent.
         ImplementerAgent agent = new ImplementerAgent(
                 anthropicClient, modelRouter, templateService,
-                planDocumentRepository, new ObjectMapper());
+                planDocumentRepository, new ObjectMapper(), new PatternLibraryService());
 
         PlanDocument plan = newPlan();
         plan.setClasses("""
@@ -66,7 +67,7 @@ class ImplementerAgentTest {
         // pointing at an empty array — the section just adds noise.
         ImplementerAgent agent = new ImplementerAgent(
                 anthropicClient, modelRouter, templateService,
-                planDocumentRepository, new ObjectMapper());
+                planDocumentRepository, new ObjectMapper(), new PatternLibraryService());
 
         PlanDocument plan = newPlan();
         plan.setClasses("[]");
@@ -82,7 +83,7 @@ class ImplementerAgentTest {
     void buildUserMessage_withNullClasses_skipsContractSection() {
         ImplementerAgent agent = new ImplementerAgent(
                 anthropicClient, modelRouter, templateService,
-                planDocumentRepository, new ObjectMapper());
+                planDocumentRepository, new ObjectMapper(), new PatternLibraryService());
 
         PlanDocument plan = newPlan();
         plan.setClasses(null);
@@ -92,6 +93,36 @@ class ImplementerAgentTest {
                 "src/main/resources/plugin.yml", "name: Test"));
 
         assertThat(msg).doesNotContain("Class Contracts");
+    }
+
+    @Test
+    void parseFilesArray_readsPathContentPairs() throws Exception {
+        ImplementerAgent agent = new ImplementerAgent(
+                anthropicClient, modelRouter, templateService,
+                planDocumentRepository, new ObjectMapper(), new PatternLibraryService());
+
+        JsonNode input = new ObjectMapper().readTree("""
+                {"files":[
+                  {"path":"src/main/java/com/bekololek/generated/Main.java","content":"package x;"},
+                  {"path":"src/main/resources/config.yml","content":"a: 1"}
+                ]}""");
+
+        Map<String, String> files = agent.parseFilesArray(input);
+
+        assertThat(files).hasSize(2)
+                .containsEntry("src/main/resources/config.yml", "a: 1");
+    }
+
+    @Test
+    void parseFilesArray_emptyOrMissing_returnsEmpty() throws Exception {
+        ImplementerAgent agent = new ImplementerAgent(
+                anthropicClient, modelRouter, templateService,
+                planDocumentRepository, new ObjectMapper(), new PatternLibraryService());
+        ObjectMapper om = new ObjectMapper();
+
+        assertThat(agent.parseFilesArray(om.readTree("{\"files\":[]}"))).isEmpty();
+        assertThat(agent.parseFilesArray(om.readTree("{}"))).isEmpty();
+        assertThat(agent.parseFilesArray(null)).isEmpty();
     }
 
     private PlanDocument newPlan() {

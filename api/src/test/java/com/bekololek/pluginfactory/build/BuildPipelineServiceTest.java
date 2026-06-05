@@ -6,6 +6,10 @@ import com.bekololek.pluginfactory.container.ContainerPoolManager;
 import com.bekololek.pluginfactory.container.ContainerSessionRepository;
 import com.bekololek.pluginfactory.container.DockerService;
 import com.bekololek.pluginfactory.container.ExecResult;
+import com.bekololek.pluginfactory.container.TestServerService;
+import com.bekololek.pluginfactory.email.EmailNotificationService;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -74,6 +78,12 @@ class BuildPipelineServiceTest {
     @Mock
     private ChatMessageService chatMessageService;
 
+    @Mock
+    private EmailNotificationService emailNotificationService;
+
+    @Mock
+    private TestServerService testServerService;
+
     @InjectMocks
     private BuildPipelineService buildPipelineService;
 
@@ -82,6 +92,23 @@ class BuildPipelineServiceTest {
     @BeforeEach
     void setUp() {
         sessionId = UUID.randomUUID();
+    }
+
+    /** A real tar of target/ containing a shaded jar, as the build container returns. */
+    private byte[] tarWithJar() {
+        try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+             TarArchiveOutputStream tar = new TarArchiveOutputStream(baos)) {
+            byte[] jar = "PK fake jar bytes".getBytes();
+            TarArchiveEntry entry = new TarArchiveEntry("target/testplugin-1.0.0.jar");
+            entry.setSize(jar.length);
+            tar.putArchiveEntry(entry);
+            tar.write(jar);
+            tar.closeArchiveEntry();
+            tar.finish();
+            return baos.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test
@@ -112,10 +139,12 @@ class BuildPipelineServiceTest {
         when(dockerService.executeCommand(eq(containerId), any(), any(), any()))
                 .thenReturn(new ExecResult(0, "BUILD SUCCESS", ""));
         when(dockerService.copyFromContainer(eq(containerId), anyString()))
-                .thenReturn(new byte[]{1, 2, 3});
+                .thenReturn(tarWithJar());
 
         when(securityScanService.scanSource(anyString()))
                 .thenReturn(new SecurityScanResult(true, Collections.emptyList()));
+        when(testServerService.runSmokeTest(any(), any()))
+                .thenReturn(new TestServerService.SmokeResult(true, "enabled cleanly"));
 
         when(buildSessionService.updatePhase(any(), any())).thenReturn(new BuildSession());
         when(buildSessionService.updateStatus(any(), any())).thenReturn(new BuildSession());
@@ -232,7 +261,7 @@ class BuildPipelineServiceTest {
         when(dockerService.executeCommand(eq(containerId), any(), any(), any()))
                 .thenReturn(new ExecResult(0, "BUILD SUCCESS", ""));
         when(dockerService.copyFromContainer(eq(containerId), anyString()))
-                .thenReturn(new byte[]{1, 2, 3});
+                .thenReturn(tarWithJar());
 
         when(securityScanService.scanSource(anyString()))
                 .thenReturn(new SecurityScanResult(false, java.util.List.of("Runtime.exec() detected")));

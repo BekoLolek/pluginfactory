@@ -116,6 +116,50 @@ Always: BukkitScheduler scheduler = Bukkit.getScheduler();
 - banList.getBanEntries() -> Set<? extends BanEntry>
 - For temp bans, pass a Date; for permanent, pass null.
 
+### NamespacedKey & PersistentDataContainer (PDC) — custom item/block data
+- new NamespacedKey(Plugin plugin, String key)   // key must be [a-z0-9/._-], no spaces/uppercase
+- ItemMeta.getPersistentDataContainer() -> PersistentDataContainer (PDC)
+- pdc.set(NamespacedKey, PersistentDataType.STRING, String value)
+  - also PersistentDataType.INTEGER / DOUBLE / BYTE / LONG / FLOAT
+- pdc.get(NamespacedKey, PersistentDataType.STRING) -> value or null
+- pdc.has(NamespacedKey, PersistentDataType.STRING) -> boolean
+- ALWAYS write meta back: item.setItemMeta(meta) after mutating the PDC.
+- TileState (block entities) and Entity also expose getPersistentDataContainer().
+- Prefer PDC over name/lore for identifying custom items — players can fake names.
+
+### Recipes (org.bukkit.inventory.*)
+- new ShapedRecipe(NamespacedKey key, ItemStack result); recipe.shape("ABC","DEF","GHI");
+  recipe.setIngredient(char, Material);  // each char in the shape maps to a Material
+- new ShapelessRecipe(NamespacedKey key, ItemStack result); recipe.addIngredient(int count, Material);
+- Bukkit.addRecipe(Recipe)            // register (server-wide)
+- Bukkit.removeRecipe(NamespacedKey)  // remove your key before re-adding on reload
+- Recipe keys are GLOBAL — namespace with your plugin to avoid clashes.
+- Recipe implements Keyed: ((Keyed) recipe).getKey(). Gate crafting via PrepareItemCraftEvent
+  (event.getInventory().setResult(null) to hide) and finalize via CraftItemEvent.
+
+### Scoreboards & Teams (org.bukkit.scoreboard.*)
+- ScoreboardManager mgr = Bukkit.getScoreboardManager();
+- Scoreboard board = mgr.getNewScoreboard();
+- board.registerNewObjective(String name, Criteria criteria, String displayName)  // Criteria.DUMMY
+- objective.setDisplaySlot(DisplaySlot.SIDEBAR); objective.getScore(String entry).setScore(int)
+- board.registerNewTeam(String) / board.getTeam(String); team.addEntry(playerName) — teams use NAMES
+- team.setColor(ChatColor), team.setAllowFriendlyFire(boolean)
+- player.setScoreboard(board); reset with mgr.getMainScoreboard().
+
+### Flat-file persistence (org.bukkit.configuration.file.YamlConfiguration)
+- File f = new File(plugin.getDataFolder(), "data.yml"); plugin.getDataFolder().mkdirs();
+- YamlConfiguration data = YamlConfiguration.loadConfiguration(f);
+- data.getInt/getString/getBoolean(path, default); data.set(path, value);
+- data.save(f) throws IOException — catch and log.
+- Keep runtime DATA (data.yml) separate from settings (config.yml). Key by UUID string.
+
+### Vault economy (optional/soft dependency)
+- softdepend in plugin.yml; never hard-fail if absent.
+- RegisteredServiceProvider<Economy> rsp = getServer().getServicesManager().getRegistration(Economy.class);
+  Economy economy = rsp != null ? rsp.getProvider() : null;
+- economy.has(OfflinePlayer, double), economy.withdrawPlayer(...), economy.depositPlayer(...)
+- Import net.milkbowl.vault.economy.Economy (provided-scope dep, added automatically when planned).
+
 ### Common Pitfalls — DO NOT
 - DO NOT call PluginManager.getRegisteredListeners(plugin) — does not exist.
   Use HandlerList.getRegisteredListeners(plugin) (static).

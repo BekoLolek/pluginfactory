@@ -86,7 +86,7 @@ class ModelRouterTest {
 
     @Test
     void codeGenerationMaxTokens() {
-        assertEquals(16384, modelRouter.getMaxTokens(ModelRouter.TaskType.CODE_GENERATION));
+        assertEquals(32000, modelRouter.getMaxTokens(ModelRouter.TaskType.CODE_GENERATION));
     }
 
     @Test

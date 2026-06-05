@@ -34,7 +34,9 @@ public class ModelRouter {
             case CLARIFICATION -> 2048;
             case INPUT_VALIDATION, ERROR_CLASSIFICATION, COMPLEXITY_ESTIMATION -> 1024;
             case PLAN_GENERATION, TEST_GENERATION -> 8192;
-            case CODE_GENERATION -> 16384;
+            // Multi-class plugins (~850+ LOC across 6+ files) overran 16k and
+            // truncated the tool output. Sonnet 4.5 supports far higher output.
+            case CODE_GENERATION -> 32000;
             case SECURITY_ANALYSIS -> 4096;
         };
     }

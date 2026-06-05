@@ -58,3 +58,22 @@ In `autoHandled`: list what the plugin itself will generate to make setup easier
 - "Provides /[pluginname] reload command (op permission) to apply config changes without restart"
 
 For NEEDS_SETUP or PARTIAL plugins, always include at minimum: a reload command and a startup warning when required config is absent.
+
+## Design checklist (verify before you submit the tool call)
+- minecraftVersion is a REAL major.minor.patch (e.g. 1.21.4) — never a wildcard or major-only.
+- Every command `name` is a single word; sub-commands live in the `usage` string, not as separate commands.
+- Declare a dependency ONLY if the plugin genuinely calls its API (e.g. Vault for economy). Don't add unused deps.
+- `classes` covers the main class plus a separate class per command group and per listener — not one mega-class.
+  Constructor params are consistent with how other classes will call them.
+- viabilityStatus reflects reality: needs config to function => NEEDS_SETUP (+ setupSteps + a reload command in autoHandled).
+- testScenarios cover the core happy path AND at least one failure/edge case.
+
+## Example (abbreviated — shape only)
+For "a /kit command that gives a starter kit, once per day per player, items configurable":
+- pluginName "StarterKit", minecraftVersion "1.21.4", serverType "Paper"
+- commands: [{ name:"kit", usage:"/kit [reload]", permission:"starterkit.use" }]
+- eventListeners: []   (none needed)
+- classes: [ {name:"StarterKit", extends:"JavaPlugin"}, {name:"KitCommand", implements:["CommandExecutor","TabCompleter"], constructorParams:["StarterKit plugin"]} ]
+- viabilityStatus "PARTIAL" (works with default items, admin can customize), setupSteps ["Edit items in config.yml"],
+  autoHandled ["Generates a commented config.yml with a default kit", "Provides /kit reload (op)"]
+Keep real plans complete and specific; this is only illustrating structure and proportions.

@@ -86,13 +86,23 @@ public class AnthropicClient {
      * Forces structured output via tool use. The model must respond by calling {@code toolName}
      * with input matching {@code toolInputSchema}; the parsed input is returned as a JsonNode.
      */
+    /** Backwards-compatible overload: server-default temperature, no prompt caching. */
+    public ToolUseResponse sendMessageWithTool(String model, String systemPrompt,
+                                                List<Map<String, String>> messages, int maxTokens,
+                                                String toolName, String toolDescription,
+                                                Map<String, Object> toolInputSchema) {
+        return sendMessageWithTool(model, systemPrompt, messages, maxTokens,
+                toolName, toolDescription, toolInputSchema, null, false);
+    }
+
     @io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker(name = "anthropic", fallbackMethod = "toolUseFallback")
     @io.github.resilience4j.retry.annotation.Retry(name = "anthropic")
     @SuppressWarnings("unchecked")
     public ToolUseResponse sendMessageWithTool(String model, String systemPrompt,
                                                 List<Map<String, String>> messages, int maxTokens,
                                                 String toolName, String toolDescription,
-                                                Map<String, Object> toolInputSchema) {
+                                                Map<String, Object> toolInputSchema,
+                                                Double temperature, boolean cacheSystem) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("x-api-key", apiKey);
@@ -110,10 +120,13 @@ public class AnthropicClient {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("max_tokens", maxTokens);
-        body.put("system", systemPrompt);
+        body.put("system", buildSystemField(systemPrompt, cacheSystem));
         body.put("messages", messages);
         body.put("tools", List.of(tool));
         body.put("tool_choice", toolChoice);
+        if (temperature != null) {
+            body.put("temperature", temperature);
+        }
 
         ResponseEntity<Map> response = restTemplate.postForEntity(
                 ANTHROPIC_API_URL, new HttpEntity<>(body, headers), Map.class);
@@ -140,9 +153,27 @@ public class AnthropicClient {
                                              List<Map<String, String>> messages, int maxTokens,
                                              String toolName, String toolDescription,
                                              Map<String, Object> toolInputSchema,
+                                             Double temperature, boolean cacheSystem,
                                              Exception e) {
         log.error("Anthropic API unavailable, circuit breaker triggered", e);
         throw new RuntimeException("AI service temporarily unavailable. Please try again in a moment.");
+    }
+
+    /**
+     * Builds the {@code system} request field. When {@code cache}, returns a
+     * single text content block tagged with {@code cache_control: ephemeral}
+     * so Anthropic prompt-caches the (large, static) system prompt — cutting
+     * input cost on repeat calls. Otherwise returns the plain string form.
+     */
+    private Object buildSystemField(String systemPrompt, boolean cache) {
+        if (!cache || systemPrompt == null || systemPrompt.isBlank()) {
+            return systemPrompt;
+        }
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("type", "text");
+        block.put("text", systemPrompt);
+        block.put("cache_control", Map.of("type", "ephemeral"));
+        return List.of(block);
     }
 
     public record ToolUseResponse(JsonNode input, String model, int inputTokens, int outputTokens) {}

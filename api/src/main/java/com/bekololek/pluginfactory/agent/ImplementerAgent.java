@@ -1,11 +1,11 @@
 package com.bekololek.pluginfactory.agent;
 
-import com.bekololek.pluginfactory.agent.dto.AnthropicResponse;
 import com.bekololek.pluginfactory.agent.dto.ImplementationResult;
 import com.bekololek.pluginfactory.common.exception.NotFoundException;
 import com.bekololek.pluginfactory.plan.PlanDocument;
 import com.bekololek.pluginfactory.plan.PlanDocumentRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
@@ -28,18 +28,28 @@ public class ImplementerAgent {
     private final TemplateService templateService;
     private final PlanDocumentRepository planDocumentRepository;
     private final ObjectMapper objectMapper;
+    private final PatternLibraryService patternLibraryService;
     private final String systemPrompt;
+
+    static final String FILES_TOOL_NAME = "submit_files";
+    private static final String FILES_TOOL_DESCRIPTION =
+            "Submit every generated source file for the plugin as a list of "
+            + "{path, content} objects. Include all .java files and, when the plan "
+            + "needs configuration, src/main/resources/config.yml. Do NOT include "
+            + "pom.xml or plugin.yml — those are generated separately.";
 
     public ImplementerAgent(AnthropicClient anthropicClient,
                             ModelRouter modelRouter,
                             TemplateService templateService,
                             PlanDocumentRepository planDocumentRepository,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper,
+                            PatternLibraryService patternLibraryService) {
         this.anthropicClient = anthropicClient;
         this.modelRouter = modelRouter;
         this.templateService = templateService;
         this.planDocumentRepository = planDocumentRepository;
         this.objectMapper = objectMapper;
+        this.patternLibraryService = patternLibraryService;
         this.systemPrompt = loadSystemPrompt() + "\n\n" + loadResource("prompts/bukkit_api_reference.txt", "");
     }
 
@@ -62,11 +72,22 @@ public class ImplementerAgent {
                 Map.of("role", "user", "content", userMessage)
         );
 
-        AnthropicResponse response = anthropicClient.sendMessage(model, systemPrompt, messages, maxTokens, temperature);
+        // Force structured output via the submit_files tool — far more reliable
+        // than asking the model to hand-write a giant escaped JSON object as
+        // free text (which truncated/garbled and silently produced no files).
+        // The large static system prompt is prompt-cached to keep cost flat.
+        AnthropicClient.ToolUseResponse response = anthropicClient.sendMessageWithTool(
+                model, systemPrompt, messages, maxTokens,
+                FILES_TOOL_NAME, FILES_TOOL_DESCRIPTION, filesToolSchema(),
+                temperature, true);
         int tokensUsed = response.inputTokens() + response.outputTokens();
 
-        // Parse the AI response as a file map
-        Map<String, String> generatedFiles = parseFileMap(response.content());
+        Map<String, String> generatedFiles = parseFilesArray(response.input());
+        if (generatedFiles.isEmpty()) {
+            throw new IllegalStateException(
+                    "Implementer returned no files for session " + sessionId
+                            + " (possible token truncation or malformed tool output).");
+        }
 
         // Merge template files with generated files (generated files override templates)
         Map<String, String> allFiles = new LinkedHashMap<>(templateFiles);
@@ -123,6 +144,12 @@ public class ImplementerAgent {
             sb.append("```json\n").append(plan.getClasses()).append("\n```\n\n");
         }
 
+        // Inject the verified patterns relevant to THIS plugin's capabilities.
+        String patterns = patternLibraryService.selectPatterns(plan);
+        if (!patterns.isBlank()) {
+            sb.append(patterns);
+        }
+
         sb.append("## Template Code (already generated - DO NOT include these in your response)\n\n");
         sb.append("### pom.xml\n```xml\n").append(templateFiles.get("pom.xml")).append("\n```\n\n");
         sb.append("### plugin.yml\n```yaml\n").append(templateFiles.get("src/main/resources/plugin.yml")).append("\n```\n\n");
@@ -135,9 +162,46 @@ public class ImplementerAgent {
 
         sb.append("Generate the complete Java implementation files. ");
         sb.append("Extend the main class skeleton above and add any additional classes needed. ");
-        sb.append("Respond with ONLY a JSON object mapping file paths to file contents.");
+        sb.append("Call the submit_files tool with every source file you create ");
+        sb.append("(.java files, and src/main/resources/config.yml if the plan needs configuration).");
 
         return sb.toString();
+    }
+
+    static Map<String, Object> filesToolSchema() {
+        Map<String, Object> fileItem = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "path", Map.of("type", "string",
+                                "description", "Repo-relative path, e.g. "
+                                        + "src/main/java/com/bekololek/generated/Foo.java"),
+                        "content", Map.of("type", "string",
+                                "description", "Full UTF-8 file contents")),
+                "required", List.of("path", "content"));
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", Map.of("files", Map.of(
+                "type", "array",
+                "items", fileItem,
+                "description", "All source files to write for this plugin.")));
+        schema.put("required", List.of("files"));
+        return schema;
+    }
+
+    /** Parses the submit_files tool input ({@code {files:[{path,content}]}}). */
+    Map<String, String> parseFilesArray(JsonNode input) {
+        Map<String, String> files = new LinkedHashMap<>();
+        if (input == null || !input.has("files") || !input.get("files").isArray()) {
+            return files;
+        }
+        for (JsonNode node : input.get("files")) {
+            String path = node.path("path").asText(null);
+            String content = node.path("content").asText(null);
+            if (path != null && !path.isBlank() && content != null) {
+                files.put(path.trim(), content);
+            }
+        }
+        return files;
     }
 
     Map<String, String> parseFileMap(String responseContent) {

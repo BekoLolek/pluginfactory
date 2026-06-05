@@ -23,24 +23,46 @@ Your task is to generate complete, working Java source code for a Minecraft plug
     will reject the build on any mismatch — see "Cross-File Consistency" in the Bukkit
     reference below for concrete patterns.
 
-## Response Format
+## Output: the submit_files tool
 
-You MUST respond with a JSON object mapping file paths to file contents. Do NOT include any text before or after the JSON.
-Do NOT wrap the JSON in markdown code blocks.
+Return your work by calling the `submit_files` tool exactly once. Its input is
+`{ "files": [ { "path": "...", "content": "..." }, ... ] }`. Write no prose outside the tool call.
 
-Example format:
-{
-  "src/main/java/com/bekololek/generated/MyPlugin.java": "package com.bekololek.generated;\n\nimport org.bukkit.plugin.java.JavaPlugin;\n\npublic class MyPlugin extends JavaPlugin {\n    @Override\n    public void onEnable() {\n        getLogger().info(\"Enabled!\");\n    }\n\n    @Override\n    public void onDisable() {\n        getLogger().info(\"Disabled!\");\n    }\n}",
-  "src/main/java/com/bekololek/generated/MyCommand.java": "..."
-}
+- One entry per file. `path` is repo-relative, e.g. `src/main/java/com/bekololek/generated/MyPlugin.java`.
+  `content` is the complete file.
+- Include every `.java` file you create, and `src/main/resources/config.yml` when the plan needs configuration.
+- Do NOT include `pom.xml` or `plugin.yml` — those are generated separately.
+- All classes go in package `com.bekololek.generated` and must compile cleanly together.
 
-## Important Notes
+## Design Principles
 
-- Only include Java source files (src/main/java/...) in your response
-- Do NOT include pom.xml or plugin.yml - those are handled separately
-- Include a config.yml in src/main/resources/ if the plan specifies configuration entries
-- Ensure all classes compile without errors
-- Use descriptive variable names and add comments for complex logic
+- **One responsibility per class.** The main class WIRES things up (registers commands/listeners,
+  loads config, creates managers) — it does not implement all the logic itself. Put commands in
+  command classes, event handling in listener classes, data in manager/service classes.
+- **Store UUIDs, not Player objects.** Players log out; a cached `Player` leaks and goes stale.
+  Keep `UUID` and resolve with `Bukkit.getPlayer(uuid)` (null-check) on use.
+- **Cache config into fields** in `onEnable()` / a `loadConfig()` method; re-read them on reload.
+  Never call `getConfig()` on a hot path.
+- **Null-safety on every Bukkit lookup**: `getPlayer`, `getWorld`, `getCommand`, `getItemMeta`,
+  `getKiller` can be null. Check before use.
+- **Threading**: Bukkit API is main-thread only. Use `BukkitRunnable` for scheduling; use async
+  ONLY for file/network I/O and hop back with `runTask` before touching the world.
+- **Fail fast and visibly**: validate required config on enable and log a clear `getLogger().warning(...)`
+  telling the admin exactly what to fix.
+- **Honour the plan's class contracts exactly** (see the LOCKED section in the user message): every
+  `new X(...)` call site must match the declared constructor; declared `extends`/`implements` must hold.
+
+## File Formats
+
+- **plugin.yml** (generated for you): `name`, `version`, `main` (fully-qualified main class),
+  `api-version` QUOTED (e.g. `api-version: '1.21'`), then `commands:` and `permissions:`. Command
+  names are single words; sub-commands are `args[0]`.
+- **config.yml** (you generate this when needed): valid YAML, 2-space indent, `#` comments on every
+  key, realistic defaults so the plugin works on first run. Booleans `true/false`, lists with `- `.
+- **Data files** you create at runtime (e.g. `data.yml`) are separate from config.yml — settings vs
+  state. Key player data by UUID string.
+- **NamespacedKey**: `new NamespacedKey(plugin, "lower_snake_id")` — lowercase, no spaces; reuse the
+  same key instance for read and write.
 
 ## Sub-command dispatch (CRITICAL)
 Commands are registered in plugin.yml as single words. Sub-commands are passed as args[0].
@@ -140,3 +162,97 @@ When the plan has viabilityStatus NEEDS_SETUP or PARTIAL you MUST generate:
 
 4. **A reload command** — register `/<pluginname> reload` (permission: op) that calls reloadConfig()
    and re-reads all configuration into memory.
+
+## Reference example (target structure & quality)
+
+A minimal but COMPLETE plugin: main class wires things up, a command class with tab completion,
+a config-backed value, and a per-player cooldown. Match this separation and quality.
+
+src/main/java/com/bekololek/generated/HealPlugin.java
+```java
+package com.bekololek.generated;
+
+import org.bukkit.command.PluginCommand;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public class HealPlugin extends JavaPlugin {
+    private int cooldownSeconds;
+
+    @Override
+    public void onEnable() {
+        saveDefaultConfig();
+        cooldownSeconds = getConfig().getInt("cooldown-seconds", 30);
+        PluginCommand cmd = getCommand("heal");
+        if (cmd != null) {
+            HealCommand executor = new HealCommand(this);
+            cmd.setExecutor(executor);
+            cmd.setTabCompleter(executor);
+        }
+        getLogger().info("HealPlugin enabled.");
+    }
+
+    public int getCooldownSeconds() { return cooldownSeconds; }
+
+    public void reloadValues() { reloadConfig(); cooldownSeconds = getConfig().getInt("cooldown-seconds", 30); }
+}
+```
+
+src/main/java/com/bekololek/generated/HealCommand.java
+```java
+package com.bekololek.generated;
+
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+public class HealCommand implements CommandExecutor, TabCompleter {
+    private final HealPlugin plugin;
+    private final Map<UUID, Long> cooldownUntil = new HashMap<>();
+
+    public HealCommand(HealPlugin plugin) { this.plugin = plugin; }
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
+            if (!sender.hasPermission("heal.reload")) { sender.sendMessage("§cNo permission."); return true; }
+            plugin.reloadValues();
+            sender.sendMessage("§aReloaded.");
+            return true;
+        }
+        if (!(sender instanceof Player player)) { sender.sendMessage("Players only."); return true; }
+        long now = System.currentTimeMillis();
+        Long until = cooldownUntil.get(player.getUniqueId());
+        if (until != null && until > now) {
+            sender.sendMessage("§cWait " + ((until - now) / 1000) + "s.");
+            return true;
+        }
+        player.setHealth(player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue());
+        cooldownUntil.put(player.getUniqueId(), now + plugin.getCooldownSeconds() * 1000L);
+        player.sendMessage("§aHealed!");
+        return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 1 && sender.hasPermission("heal.reload")) return List.of("reload");
+        return Collections.emptyList();
+    }
+}
+```
+
+src/main/resources/config.yml
+```yaml
+# Seconds a player must wait between /heal uses
+cooldown-seconds: 30
+```
+
+This is exactly the shape and care expected: separated classes, null-checked `getCommand`, cached
+config, UUID-keyed cooldown, reload support, and a commented config.yml.

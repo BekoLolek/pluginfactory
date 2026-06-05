@@ -106,7 +106,8 @@ public class PlanGenerationAgent {
         // 4. Call AnthropicClient with forced tool use — model must return structured input
         AnthropicClient.ToolUseResponse response = anthropicClient.sendMessageWithTool(
                 model, systemPrompt, messages, maxTokens,
-                PLAN_TOOL_NAME, PLAN_TOOL_DESCRIPTION, planToolSchema());
+                PLAN_TOOL_NAME, PLAN_TOOL_DESCRIPTION, planToolSchema(),
+                modelRouter.getTemperature(ModelRouter.TaskType.PLAN_GENERATION), true);
 
         JsonNode root = response.input();
         if (root == null || !root.isObject()) {
