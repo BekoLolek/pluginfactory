@@ -60,6 +60,13 @@ public class BuildPipelineService {
     private final SubscriptionService subscriptionService;
 
     /**
+     * Hard cap on automatic fix-retries per session, independent of the token
+     * budget. Without it, a non-converging compile/functional loop on a
+     * high-budget (e.g. TEAM) session would iterate dozens of times.
+     */
+    private static final int MAX_AUTO_RETRIES = 4;
+
+    /**
      * Runs the full build pipeline off the request thread.
      *
      * <p>Annotated with {@link Async} and bound to the dedicated
@@ -375,9 +382,16 @@ public class BuildPipelineService {
         error.setRetryCount(retryCount);
         buildErrorRepository.save(error);
 
+        // Hard cap on auto-fix attempts regardless of remaining budget.
+        long autoRetries = buildIterationRepository
+                .findBySessionIdOrderByIterationNumberAsc(sessionId).stream()
+                .filter(it -> "AUTO_RETRY".equals(it.getTrigger()))
+                .count();
+
         // Check if we should retry — feeding the failed source + the failure
         // detail into a targeted repair instead of a blind regeneration.
-        if (retryPolicy.shouldRetry(sessionId, retryCategory, retryCount)) {
+        if (autoRetries < MAX_AUTO_RETRIES
+                && retryPolicy.shouldRetry(sessionId, retryCategory, retryCount)) {
             ImplementerAgent.RepairContext repair =
                     (previousFiles != null && !previousFiles.isEmpty())
                             ? new ImplementerAgent.RepairContext(previousFiles,
