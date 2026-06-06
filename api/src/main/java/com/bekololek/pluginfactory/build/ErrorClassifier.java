@@ -21,7 +21,7 @@ public class ErrorClassifier {
         // RECOVERABLE - compilation errors worth retrying
         if (containsAny(lower, "cannot find symbol", "cannot resolve", "incompatible types",
                 "missing return", "unreported exception", "not a statement", "';' expected",
-                "package does not exist", "cannot be applied", "null pointer",
+                "does not exist", "cannot be applied", "null pointer",
                 "variable might not have been initialized")) {
             return ErrorCategory.RECOVERABLE;
         }

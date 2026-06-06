@@ -326,11 +326,14 @@ public class BuildPipelineService {
                                    String category, String message, Exception e,
                                    Map<String, String> previousFiles) {
         ErrorClassifier.ErrorCategory classified = errorClassifier.classify(message);
-        // Functional/runtime failures are behavioral (the plugin compiled and
-        // enabled) — let the auto-fix loop attempt a targeted repair rather than
-        // classifying them STRUCTURAL and giving up immediately.
+        // Compilation, runtime, and functional failures are all code problems the
+        // auto-fix loop can attempt to repair (it gets the previous source + the
+        // exact error). Treat them as recoverable so the targeted repair runs,
+        // rather than giving up on a strict STRUCTURAL classification. SECURITY
+        // and other categories keep the classifier's verdict.
         ErrorClassifier.ErrorCategory retryCategory =
-                ("FUNCTIONAL".equals(category) || "RUNTIME".equals(category))
+                ("FUNCTIONAL".equals(category) || "RUNTIME".equals(category)
+                        || "COMPILATION".equals(category))
                         ? ErrorClassifier.ErrorCategory.RECOVERABLE : classified;
 
         iteration.setStatus("FAILED");
