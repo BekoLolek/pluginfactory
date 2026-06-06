@@ -96,6 +96,28 @@ class ImplementerAgentTest {
     }
 
     @Test
+    void buildUserMessage_withRepairContext_includesFailureAndPreviousFiles() {
+        ImplementerAgent agent = new ImplementerAgent(
+                anthropicClient, modelRouter, templateService,
+                planDocumentRepository, new ObjectMapper(), new PatternLibraryService());
+
+        PlanDocument plan = newPlan();
+        ImplementerAgent.RepairContext repair = new ImplementerAgent.RepairContext(
+                Map.of("src/main/java/com/bekololek/generated/Main.java",
+                        "package com.bekololek.generated; class Main {}"),
+                "COMPILATION failure:\npackage com.sk89q.worldedit does not exist");
+
+        String msg = agent.buildUserMessage(plan, Map.of(
+                "pom.xml", "<project/>",
+                "src/main/resources/plugin.yml", "name: Test"), repair);
+
+        assertThat(msg)
+                .contains("PREVIOUS ATTEMPT FAILED")
+                .contains("com.sk89q.worldedit does not exist")
+                .contains("class Main");
+    }
+
+    @Test
     void parseFilesArray_readsPathContentPairs() throws Exception {
         ImplementerAgent agent = new ImplementerAgent(
                 anthropicClient, modelRouter, templateService,

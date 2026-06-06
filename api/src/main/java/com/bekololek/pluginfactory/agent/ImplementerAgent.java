@@ -53,7 +53,20 @@ public class ImplementerAgent {
         this.systemPrompt = loadSystemPrompt() + "\n\n" + loadResource("prompts/bukkit_api_reference.txt", "");
     }
 
+    /**
+     * Optional targeted-repair context for an auto-fix retry: the files from
+     * the failed attempt plus a description of exactly how it failed (compiler
+     * errors, runtime/enable errors, or failing functional scenarios). When
+     * present, the model gets its own previous output + the failure and is told
+     * to fix the specific problem — far more effective than a blind re-roll.
+     */
+    public record RepairContext(Map<String, String> previousFiles, String failureDetail) {}
+
     public ImplementationResult implement(UUID sessionId) {
+        return implement(sessionId, null);
+    }
+
+    public ImplementationResult implement(UUID sessionId, RepairContext repair) {
         PlanDocument plan = planDocumentRepository.findBySessionId(sessionId)
                 .orElseThrow(() -> new NotFoundException("Plan document not found for session: " + sessionId));
 
@@ -61,7 +74,7 @@ public class ImplementerAgent {
         Map<String, String> templateFiles = templateService.renderTemplate(plan);
 
         // Build the user message with plan details and template code
-        String userMessage = buildUserMessage(plan, templateFiles);
+        String userMessage = buildUserMessage(plan, templateFiles, repair);
 
         // Call AI to generate implementation
         String model = modelRouter.selectModel(ModelRouter.TaskType.CODE_GENERATION);
@@ -100,6 +113,10 @@ public class ImplementerAgent {
     }
 
     String buildUserMessage(PlanDocument plan, Map<String, String> templateFiles) {
+        return buildUserMessage(plan, templateFiles, null);
+    }
+
+    String buildUserMessage(PlanDocument plan, Map<String, String> templateFiles, RepairContext repair) {
         StringBuilder sb = new StringBuilder();
         sb.append("## Plugin Plan\n\n");
         sb.append("**Plugin Name**: ").append(plan.getPluginName()).append("\n");
@@ -160,12 +177,32 @@ public class ImplementerAgent {
                 .forEach(e -> sb.append("### ").append(e.getKey()).append("\n```java\n")
                         .append(e.getValue()).append("\n```\n\n"));
 
+        if (repair != null) {
+            sb.append("\n## YOUR PREVIOUS ATTEMPT FAILED — TARGETED FIX REQUIRED\n");
+            sb.append("You generated the files below and they failed. Exactly how they failed:\n\n");
+            sb.append("```\n").append(truncate(repair.failureDetail(), 6000)).append("\n```\n\n");
+            sb.append("Your previous files:\n\n");
+            repair.previousFiles().forEach((path, content) -> {
+                if (path.endsWith(".java") || path.endsWith("config.yml")) {
+                    sb.append("### ").append(path).append("\n```java\n").append(content).append("\n```\n\n");
+                }
+            });
+            sb.append("Fix the SPECIFIC problem(s) above and resubmit ALL files (corrected) via submit_files. ");
+            sb.append("Do not reintroduce the same error. If an import/dependency is unavailable ");
+            sb.append("(e.g. 'package ... does not exist'), implement the feature WITHOUT it rather than importing it.\n\n");
+        }
+
         sb.append("Generate the complete Java implementation files. ");
         sb.append("Extend the main class skeleton above and add any additional classes needed. ");
         sb.append("Call the submit_files tool with every source file you create ");
         sb.append("(.java files, and src/main/resources/config.yml if the plan needs configuration).");
 
         return sb.toString();
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + "\n…(truncated)";
     }
 
     static Map<String, Object> filesToolSchema() {

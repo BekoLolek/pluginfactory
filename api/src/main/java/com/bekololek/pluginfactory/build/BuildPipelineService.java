@@ -1,5 +1,6 @@
 package com.bekololek.pluginfactory.build;
 
+import com.bekololek.pluginfactory.agent.FunctionalTestAgent;
 import com.bekololek.pluginfactory.agent.ImplementerAgent;
 import com.bekololek.pluginfactory.agent.dto.ImplementationResult;
 import com.bekololek.pluginfactory.email.EmailNotificationService;
@@ -11,7 +12,10 @@ import com.bekololek.pluginfactory.container.ContainerSession;
 import com.bekololek.pluginfactory.container.ContainerSessionRepository;
 import com.bekololek.pluginfactory.container.DockerService;
 import com.bekololek.pluginfactory.container.ExecResult;
+import com.bekololek.pluginfactory.container.FunctionalTestService;
 import com.bekololek.pluginfactory.container.TestServerService;
+import com.bekololek.pluginfactory.subscription.SubscriptionService;
+import com.bekololek.pluginfactory.subscription.Tier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -51,6 +55,9 @@ public class BuildPipelineService {
     private final ChatMessageService chatMessageService;
     private final EmailNotificationService emailNotificationService;
     private final TestServerService testServerService;
+    private final FunctionalTestAgent functionalTestAgent;
+    private final FunctionalTestService functionalTestService;
+    private final SubscriptionService subscriptionService;
 
     /**
      * Runs the full build pipeline off the request thread.
@@ -122,13 +129,16 @@ public class BuildPipelineService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Iteration " + iterationId + " not found for session " + sessionId));
 
+        // Hoisted so the catch blocks can pass the failed source into the
+        // auto-fix retry (targeted repair instead of a blind re-roll).
+        Map<String, String> files = null;
         try {
             // Phase 1: IMPLEMENTATION
             buildSessionService.updatePhase(sessionId, BuildPhase.IMPLEMENTATION);
             buildProgressService.notifyPhaseChange(sessionId, BuildPhase.IMPLEMENTATION);
 
             ImplementationResult result = implementerAgent.implement(sessionId);
-            Map<String, String> files = result.files();
+            files = result.files();
             tokenBudgetService.consumeTokens(sessionId, "implementation", result.tokensUsed());
 
             // Phase 2: COMPILATION
@@ -137,24 +147,28 @@ public class BuildPipelineService {
 
             byte[] jarBytes = compileInContainer(sessionId, iterationId, files);
 
-            // Phases 3-5: security scan, runtime smoke test, deliver, complete.
+            // Phases 3-6: security scan, runtime smoke test, functional test, deliver.
             finalizeBuild(sessionId, iteration, files, jarBytes);
 
         } catch (CompilationException e) {
             log.error("Compilation failed for session {}: {}", sessionId, e.getMessage());
-            handleBuildError(iteration, sessionId, "COMPILATION", e.getMessage(), e);
+            handleBuildError(iteration, sessionId, "COMPILATION", e.getMessage(), e, files);
 
         } catch (RuntimeTestException e) {
             log.error("Runtime test failed for session {}: {}", sessionId, e.getMessage());
-            handleBuildError(iteration, sessionId, "RUNTIME", e.getMessage(), e);
+            handleBuildError(iteration, sessionId, "RUNTIME", e.getMessage(), e, files);
+
+        } catch (FunctionalTestException e) {
+            log.error("Functional test failed for session {}: {}", sessionId, e.getMessage());
+            handleBuildError(iteration, sessionId, "FUNCTIONAL", e.getMessage(), e, files);
 
         } catch (SecurityViolationException e) {
             log.error("Security scan failed for session {}: {}", sessionId, e.getMessage());
-            handleBuildError(iteration, sessionId, "SECURITY", e.getMessage(), e);
+            handleBuildError(iteration, sessionId, "SECURITY", e.getMessage(), e, files);
 
         } catch (Exception e) {
             log.error("Build failed for session {}: {}", sessionId, e.getMessage(), e);
-            handleBuildError(iteration, sessionId, "GENERAL", e.getMessage(), e);
+            handleBuildError(iteration, sessionId, "GENERAL", e.getMessage(), e, files);
         }
     }
 
@@ -185,6 +199,24 @@ public class BuildPipelineService {
             throw new RuntimeTestException(smoke.detail());
         }
         log.info("Runtime smoke test passed for session {}: {}", sessionId, smoke.detail());
+
+        // FUNCTIONAL TEST (Basic+ tier): an in-server bot drives the plugin's
+        // commands/interactions and asserts observable effects. Free tier keeps
+        // the enable-check only. Failures throw FunctionalTestException, which
+        // the auto-fix loop treats as recoverable.
+        UUID ownerId = buildSessionService.getSessionById(sessionId).getUserId();
+        if (subscriptionService.getTierForUser(ownerId) != Tier.FREE) {
+            FunctionalTestAgent.ScenarioScript script = functionalTestAgent.generate(sessionId, files);
+            tokenBudgetService.consumeTokens(sessionId, "testing", script.tokensUsed());
+            FunctionalTestService.FunctionalResult fr =
+                    functionalTestService.run(jarBytes, pluginName, script.script());
+            chatMessageService.addMessage(sessionId, "system", "Functional test — " + fr.detail(), null, 0);
+            if (fr.ran() && !fr.passed()) {
+                throw new FunctionalTestException(fr.detail());
+            }
+            log.info("Functional test for session {} ({}): {}", sessionId,
+                    fr.ran() ? "ran" : "skipped", fr.detail());
+        }
 
         // DELIVERING
         buildSessionService.updatePhase(sessionId, BuildPhase.DELIVERING);
@@ -291,8 +323,15 @@ public class BuildPipelineService {
     }
 
     private void handleBuildError(BuildIteration iteration, UUID sessionId,
-                                   String category, String message, Exception e) {
+                                   String category, String message, Exception e,
+                                   Map<String, String> previousFiles) {
         ErrorClassifier.ErrorCategory classified = errorClassifier.classify(message);
+        // Functional/runtime failures are behavioral (the plugin compiled and
+        // enabled) — let the auto-fix loop attempt a targeted repair rather than
+        // classifying them STRUCTURAL and giving up immediately.
+        ErrorClassifier.ErrorCategory retryCategory =
+                ("FUNCTIONAL".equals(category) || "RUNTIME".equals(category))
+                        ? ErrorClassifier.ErrorCategory.RECOVERABLE : classified;
 
         iteration.setStatus("FAILED");
         iteration.setCompletedAt(Instant.now());
@@ -313,9 +352,15 @@ public class BuildPipelineService {
         error.setRetryCount(retryCount);
         buildErrorRepository.save(error);
 
-        // Check if we should retry
-        if (retryPolicy.shouldRetry(sessionId, classified, retryCount)) {
-            retryBuild(sessionId, message);
+        // Check if we should retry — feeding the failed source + the failure
+        // detail into a targeted repair instead of a blind regeneration.
+        if (retryPolicy.shouldRetry(sessionId, retryCategory, retryCount)) {
+            ImplementerAgent.RepairContext repair =
+                    (previousFiles != null && !previousFiles.isEmpty())
+                            ? new ImplementerAgent.RepairContext(previousFiles,
+                                    category + " failure:\n" + message)
+                            : null;
+            retryBuild(sessionId, message, repair);
             return;
         }
 
@@ -325,7 +370,7 @@ public class BuildPipelineService {
         emailNotificationService.notifyBuildFailed(sessionId, category);
     }
 
-    private void retryBuild(UUID sessionId, String errorMessage) {
+    private void retryBuild(UUID sessionId, String errorMessage, ImplementerAgent.RepairContext repair) {
         // Add error context as a chat message so the AI can see what went wrong
         chatMessageService.addMessage(sessionId, "system",
                 "Build failed with error: " + errorMessage + "\nPlease fix the issue and try again.",
@@ -344,13 +389,15 @@ public class BuildPipelineService {
 
         UUID retryIterationId = retryIteration.getId();
 
+        Map<String, String> files = null;
         try {
-            // Re-run implementation
+            // Re-run implementation — as a TARGETED repair when we have the
+            // previous files + failure detail, otherwise a fresh generation.
             buildSessionService.updatePhase(sessionId, BuildPhase.IMPLEMENTATION);
             buildProgressService.notifyPhaseChange(sessionId, BuildPhase.IMPLEMENTATION);
 
-            ImplementationResult result = implementerAgent.implement(sessionId);
-            Map<String, String> files = result.files();
+            ImplementationResult result = implementerAgent.implement(sessionId, repair);
+            files = result.files();
             tokenBudgetService.consumeTokens(sessionId, "implementation", result.tokensUsed());
 
             // Re-run compilation
@@ -359,24 +406,28 @@ public class BuildPipelineService {
 
             byte[] jarBytes = compileInContainer(sessionId, retryIterationId, files);
 
-            // Phases 3-5: security scan, runtime smoke test, deliver, complete.
+            // Phases 3-6: security scan, runtime smoke test, functional test, deliver.
             finalizeBuild(sessionId, retryIteration, files, jarBytes);
 
         } catch (CompilationException ce) {
             log.error("Retry compilation failed for session {}: {}", sessionId, ce.getMessage());
-            handleBuildError(retryIteration, sessionId, "COMPILATION", ce.getMessage(), ce);
+            handleBuildError(retryIteration, sessionId, "COMPILATION", ce.getMessage(), ce, files);
 
         } catch (RuntimeTestException re) {
             log.error("Retry runtime test failed for session {}: {}", sessionId, re.getMessage());
-            handleBuildError(retryIteration, sessionId, "RUNTIME", re.getMessage(), re);
+            handleBuildError(retryIteration, sessionId, "RUNTIME", re.getMessage(), re, files);
+
+        } catch (FunctionalTestException fe) {
+            log.error("Retry functional test failed for session {}: {}", sessionId, fe.getMessage());
+            handleBuildError(retryIteration, sessionId, "FUNCTIONAL", fe.getMessage(), fe, files);
 
         } catch (SecurityViolationException se) {
             log.error("Retry security scan failed for session {}: {}", sessionId, se.getMessage());
-            handleBuildError(retryIteration, sessionId, "SECURITY", se.getMessage(), se);
+            handleBuildError(retryIteration, sessionId, "SECURITY", se.getMessage(), se, files);
 
         } catch (Exception ex) {
             log.error("Retry build failed for session {}: {}", sessionId, ex.getMessage(), ex);
-            handleBuildError(retryIteration, sessionId, "GENERAL", ex.getMessage(), ex);
+            handleBuildError(retryIteration, sessionId, "GENERAL", ex.getMessage(), ex, files);
         }
     }
 

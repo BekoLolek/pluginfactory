@@ -6,8 +6,12 @@ import com.bekololek.pluginfactory.container.ContainerPoolManager;
 import com.bekololek.pluginfactory.container.ContainerSessionRepository;
 import com.bekololek.pluginfactory.container.DockerService;
 import com.bekololek.pluginfactory.container.ExecResult;
+import com.bekololek.pluginfactory.agent.FunctionalTestAgent;
+import com.bekololek.pluginfactory.container.FunctionalTestService;
 import com.bekololek.pluginfactory.container.TestServerService;
 import com.bekololek.pluginfactory.email.EmailNotificationService;
+import com.bekololek.pluginfactory.subscription.SubscriptionService;
+import com.bekololek.pluginfactory.subscription.Tier;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -84,6 +88,15 @@ class BuildPipelineServiceTest {
     @Mock
     private TestServerService testServerService;
 
+    @Mock
+    private FunctionalTestAgent functionalTestAgent;
+
+    @Mock
+    private FunctionalTestService functionalTestService;
+
+    @Mock
+    private SubscriptionService subscriptionService;
+
     @InjectMocks
     private BuildPipelineService buildPipelineService;
 
@@ -145,6 +158,13 @@ class BuildPipelineServiceTest {
                 .thenReturn(new SecurityScanResult(true, Collections.emptyList()));
         when(testServerService.runSmokeTest(any(), any()))
                 .thenReturn(new TestServerService.SmokeResult(true, "enabled cleanly"));
+
+        // Owner + tier lookup for the functional-test gate. FREE tier skips
+        // functional testing, keeping this test focused on the deliver path.
+        BuildSession ownerSession = new BuildSession();
+        ownerSession.setUserId(UUID.randomUUID());
+        when(buildSessionService.getSessionById(sessionId)).thenReturn(ownerSession);
+        when(subscriptionService.getTierForUser(any())).thenReturn(Tier.FREE);
 
         when(buildSessionService.updatePhase(any(), any())).thenReturn(new BuildSession());
         when(buildSessionService.updateStatus(any(), any())).thenReturn(new BuildSession());
