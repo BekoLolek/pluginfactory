@@ -1,7 +1,8 @@
-# Headless Paper server used for the runtime smoke test. The TEST container
-# runs with network=none, so Paper's first-run downloads (the patched vanilla
-# server + libraries) and world generation are BAKED here at image-build time,
-# when network is available. At test time the server starts fully offline.
+# Headless Paper server + in-container bot harness used for plugin testing.
+# The TEST container runs with network=none, so Paper's first-run downloads
+# (the patched vanilla server + libraries), world generation, and the Node/
+# Mineflayer harness deps are all BAKED here at image-build time when network
+# is available. At test time the server + bot run fully offline over loopback.
 FROM eclipse-temurin:21-jre-jammy
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
@@ -9,6 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 
 WORKDIR /server
 ARG PAPER_VERSION=1.21.4
+# RCON lets the harness op the bot, set up world state, and read server-side
+# command output. Loopback-only inside a network=none container, so safe.
+ENV RCON_PASSWORD=pf-rcon-pass
 
 # Download the latest Paper build for the target version.
 RUN set -eux; \
@@ -17,7 +21,7 @@ RUN set -eux; \
     curl -fsSL -o paper.jar \
         "https://api.papermc.io/v2/projects/paper/versions/${PAPER_VERSION}/builds/${BUILD}/downloads/paper-${PAPER_VERSION}-${BUILD}.jar"; \
     echo "eula=true" > eula.txt; \
-    printf 'level-type=minecraft:flat\nonline-mode=false\nspawn-protection=0\nview-distance=4\nsimulation-distance=4\nmax-players=2\nspawn-npcs=false\nspawn-animals=false\nspawn-monsters=false\ngenerate-structures=false\nmotd=pf-test\n' > server.properties
+    printf 'level-type=minecraft:flat\nonline-mode=false\nspawn-protection=0\nview-distance=4\nsimulation-distance=4\nmax-players=4\nspawn-npcs=false\nspawn-animals=false\nspawn-monsters=false\ngenerate-structures=false\nenable-rcon=true\nrcon.port=25575\nrcon.password=pf-rcon-pass\nmotd=pf-test\n' > server.properties
 
 # Bake: first run downloads + patches the server jar and generates the flat
 # spawn, then we stop it. Everything persists in the image layer.
@@ -33,6 +37,15 @@ RUN set -eux; \
     grep -q 'Done (' /server/boot.log || { echo '--- Paper failed to bake ---'; tail -n 60 /server/boot.log; exit 1; }; \
     rm -f /server/boot.log
 
-RUN useradd -r -m tester && mkdir -p /server/plugins && chown -R tester:tester /server
+# Node 20 + the Mineflayer/RCON harness (deps baked for offline use).
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+COPY harness /harness
+RUN cd /harness && npm install --omit=dev --no-audit --no-fund
+
+RUN useradd -r -m tester \
+    && mkdir -p /server/plugins /work \
+    && chown -R tester:tester /server /harness /work
 USER tester
 CMD ["tail", "-f", "/dev/null"]

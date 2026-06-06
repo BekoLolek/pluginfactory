@@ -1,0 +1,9 @@
+name: PingPlugin
+version: 1.0.0
+main: com.pf.test.PingPlugin
+api-version: '1.21'
+commands:
+  ping:
+    description: replies pong
+  givetoken:
+    description: gives a named token item
