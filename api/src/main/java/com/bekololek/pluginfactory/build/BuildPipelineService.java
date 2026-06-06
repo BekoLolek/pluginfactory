@@ -210,7 +210,9 @@ public class BuildPipelineService {
             tokenBudgetService.consumeTokens(sessionId, "testing", script.tokensUsed());
             FunctionalTestService.FunctionalResult fr =
                     functionalTestService.run(jarBytes, pluginName, script.script());
-            chatMessageService.addMessage(sessionId, "system", "Functional test — " + fr.detail(), null, 0);
+            // User-facing summary only — counts + failed check NAMES, never the
+            // raw bot/assertion output (which goes to the repair context below).
+            chatMessageService.addMessage(sessionId, "system", friendlyFunctionalSummary(fr), null, 0);
             if (fr.ran() && !fr.passed()) {
                 throw new FunctionalTestException(fr.detail());
             }
@@ -236,6 +238,24 @@ public class BuildPipelineService {
         emailNotificationService.notifyBuildSuccess(sessionId);
 
         log.info("Build completed successfully for session {}", sessionId);
+    }
+
+    /** A user-friendly one-liner about the functional test — no raw bot output. */
+    private String friendlyFunctionalSummary(FunctionalTestService.FunctionalResult fr) {
+        if (!fr.ran()) {
+            return "🧪 Functional test skipped.";
+        }
+        int total = fr.scenarios().size();
+        long passed = fr.scenarios().stream().filter(FunctionalTestService.ScenarioResult::passed).count();
+        if (fr.passed()) {
+            return "✅ Functional test: " + passed + "/" + total + " checks passed.";
+        }
+        String failed = fr.scenarios().stream()
+                .filter(s -> !s.passed())
+                .map(FunctionalTestService.ScenarioResult::name)
+                .reduce((a, b) -> a + "; " + b).orElse("");
+        return "🧪 Functional test: " + passed + "/" + total
+                + " checks passed — automatically retrying to fix: " + failed;
     }
 
     /** Plugin name from the generated plugin.yml (for the smoke-test log match). */
@@ -374,10 +394,11 @@ public class BuildPipelineService {
     }
 
     private void retryBuild(UUID sessionId, String errorMessage, ImplementerAgent.RepairContext repair) {
-        // Add error context as a chat message so the AI can see what went wrong
+        // User-facing note only — NEVER leak the raw compiler/runtime/bot output
+        // into the chat. The technical detail is preserved in build_errors and
+        // fed to the implementer via the repair context, not shown to the user.
         chatMessageService.addMessage(sessionId, "system",
-                "Build failed with error: " + errorMessage + "\nPlease fix the issue and try again.",
-                null, 0);
+                "⚙️ A build issue came up — automatically retrying with a fix…", null, 0);
 
         // Create a new iteration for the retry
         int iterationNumber = buildIterationRepository
