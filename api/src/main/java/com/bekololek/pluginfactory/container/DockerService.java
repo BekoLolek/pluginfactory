@@ -82,13 +82,60 @@ public class DockerService {
                 .map(e -> e.getKey() + "=" + e.getValue())
                 .toArray(String[]::new);
 
-        CreateContainerResponse response = dockerClient.createContainerCmd(image)
-                .withEnv(envArray)
-                .withHostConfig(securityConfig.getSecurityConstraints(type))
-                .exec();
+        CreateContainerResponse response = withDockerRetry("createContainer", () ->
+                dockerClient.createContainerCmd(image)
+                        .withEnv(envArray)
+                        .withHostConfig(securityConfig.getSecurityConstraints(type))
+                        .exec());
 
         log.info("Created {} container: {}", type, response.getId());
         return response.getId();
+    }
+
+    /**
+     * The API talks to Docker through a docker-socket-proxy (haproxy) which
+     * closes idle keep-alive connections. A request that grabs a stale pooled
+     * connection fails with {@code NoHttpResponseException: docker-proxy:2375
+     * failed to respond} — a transient that has been failing otherwise-good
+     * builds. Retrying on a fresh connection succeeds, so wrap Docker calls in
+     * a small bounded retry that only re-attempts on stale-connection errors.
+     */
+    private <T> T withDockerRetry(String op, java.util.function.Supplier<T> action) {
+        int attempt = 0;
+        while (true) {
+            try {
+                return action.get();
+            } catch (RuntimeException e) {
+                attempt++;
+                if (attempt >= 3 || !isStaleConnection(e)) {
+                    throw e;
+                }
+                log.warn("Docker op '{}' hit a stale proxy connection (attempt {}/3), retrying: {}",
+                        op, attempt, e.getMessage());
+                try {
+                    Thread.sleep(300L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
+    }
+
+    private boolean isStaleConnection(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof org.apache.hc.core5.http.NoHttpResponseException) {
+                return true;
+            }
+            String m = t.getMessage();
+            if (m != null && (m.contains("failed to respond")
+                    || m.contains("Connection reset")
+                    || m.contains("Broken pipe")
+                    || m.contains("Connection is closed"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void startContainer(String containerId) {
@@ -118,6 +165,14 @@ public class DockerService {
     }
 
     public ExecResult executeCommand(String containerId, String... command) {
+        // Retry on stale-proxy-connection failures (NoHttpResponseException).
+        // Our commands (mvn clean package, server boot, rm -rf) are safe to
+        // re-run, and the transient almost always strikes at exec-create time
+        // before the command runs.
+        return withDockerRetry("executeCommand", () -> executeCommandOnce(containerId, command));
+    }
+
+    private ExecResult executeCommandOnce(String containerId, String... command) {
         requireClient();
 
         ExecCreateCmdResponse execCreate = dockerClient.execCreateCmd(containerId)
@@ -184,27 +239,32 @@ public class DockerService {
 
     public void copyToContainer(String containerId, byte[] tarContent, String destPath) {
         requireClient();
-        dockerClient.copyArchiveToContainerCmd(containerId)
-                .withTarInputStream(new java.io.ByteArrayInputStream(tarContent))
-                .withRemotePath(destPath)
-                .exec();
+        withDockerRetry("copyToContainer", () -> {
+            dockerClient.copyArchiveToContainerCmd(containerId)
+                    .withTarInputStream(new java.io.ByteArrayInputStream(tarContent))
+                    .withRemotePath(destPath)
+                    .exec();
+            return null;
+        });
         log.debug("Copied archive to container {} at {}", containerId, destPath);
     }
 
     public byte[] copyFromContainer(String containerId, String sourcePath) {
         requireClient();
-        try (InputStream is = dockerClient.copyArchiveFromContainerCmd(containerId, sourcePath).exec()) {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = is.read(buffer)) != -1) {
-                baos.write(buffer, 0, bytesRead);
+        return withDockerRetry("copyFromContainer", () -> {
+            try (InputStream is = dockerClient.copyArchiveFromContainerCmd(containerId, sourcePath).exec()) {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = is.read(buffer)) != -1) {
+                    baos.write(buffer, 0, bytesRead);
+                }
+                log.debug("Copied archive from container {} at {}", containerId, sourcePath);
+                return baos.toByteArray();
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to copy from container " + containerId, e);
             }
-            log.debug("Copied archive from container {} at {}", containerId, sourcePath);
-            return baos.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to copy from container " + containerId, e);
-        }
+        });
     }
 
     private void requireClient() {
