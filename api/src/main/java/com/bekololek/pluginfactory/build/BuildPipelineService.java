@@ -382,11 +382,21 @@ public class BuildPipelineService {
         error.setRetryCount(retryCount);
         buildErrorRepository.save(error);
 
-        // Hard cap on auto-fix attempts regardless of remaining budget.
-        long autoRetries = buildIterationRepository
-                .findBySessionIdOrderByIterationNumberAsc(sessionId).stream()
-                .filter(it -> "AUTO_RETRY".equals(it.getTrigger()))
-                .count();
+        // Hard cap on auto-fix attempts regardless of remaining budget. Count
+        // only the trailing run of AUTO_RETRY iterations — i.e. since the most
+        // recent MANUAL trigger (INITIAL / ADMIN_*) — so a fresh admin retrigger
+        // grants a fresh set of auto-fix attempts instead of being permanently
+        // blocked by historical retries.
+        java.util.List<BuildIteration> sessionIters =
+                buildIterationRepository.findBySessionIdOrderByIterationNumberAsc(sessionId);
+        long autoRetries = 0;
+        for (int i = sessionIters.size() - 1; i >= 0; i--) {
+            if ("AUTO_RETRY".equals(sessionIters.get(i).getTrigger())) {
+                autoRetries++;
+            } else {
+                break;
+            }
+        }
 
         // Check if we should retry — feeding the failed source + the failure
         // detail into a targeted repair instead of a blind regeneration.

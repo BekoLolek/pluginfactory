@@ -102,15 +102,13 @@ public class FailedBuildRecoveryService {
     private BuildIteration doRecover(BuildSession session, String trigger) {
         UUID sessionId = session.getId();
         BuildError latest = buildErrorRepository.findFirstBySessionIdOrderByCreatedAtDesc(sessionId);
-        String errorContext = buildErrorContext(latest);
-        String phase = session.getCurrentPhase() != null ? session.getCurrentPhase().name() : "unknown";
+        // Keep the technical fix-context in the logs only — NEVER in the
+        // user-facing chat (this used to leak the raw Maven/compiler output).
+        // The implementer receives error context through the repair loop, not chat.
+        log.debug("Recovery fix-context for session {}: {}", sessionId, buildErrorContext(latest));
 
         chatMessageService.addMessage(sessionId, "system",
-                "RECOVERY (" + trigger + "): previous build failed at phase " + phase + ":\n\n" +
-                        errorContext + "\n\n" +
-                        "Do NOT add new features, change scope, or introduce anything not " +
-                        "already in the approved plan. Only repair the failure described above.",
-                null, 0);
+                "🔧 Re-running your build to fix the previous issue…", null, 0);
 
         // Clear FAILED-stamped completedAt so the next terminal transition
         // records the actual recovery completion time.

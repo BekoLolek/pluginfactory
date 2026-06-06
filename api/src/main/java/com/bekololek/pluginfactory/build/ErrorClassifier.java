@@ -18,11 +18,12 @@ public class ErrorClassifier {
             return ErrorCategory.SECURITY;
         }
 
-        // RECOVERABLE - compilation errors worth retrying
+        // RECOVERABLE - compilation errors + transient AI/infra hiccups worth retrying
         if (containsAny(lower, "cannot find symbol", "cannot resolve", "incompatible types",
                 "missing return", "unreported exception", "not a statement", "';' expected",
                 "does not exist", "cannot be applied", "null pointer",
-                "variable might not have been initialized")) {
+                "variable might not have been initialized",
+                "temporarily unavailable", "failed to respond", "timed out", "rate limit")) {
             return ErrorCategory.RECOVERABLE;
         }
 
