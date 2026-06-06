@@ -67,6 +67,7 @@ public class AdminService {
     private final TokenBudgetService tokenBudgetService;
     private final ChatMessageService chatMessageService;
     private final ChatbotAgent chatbotAgent;
+    private final BuildLauncher buildLauncher;
     private final ObjectMapper objectMapper;
 
     // ── Overview ──────────────────────────────────────────────────────
@@ -244,6 +245,25 @@ public class AdminService {
 
     public BuildIteration recoverFailedBuild(UUID sessionId) {
         return failedBuildRecoveryService.adminRecover(sessionId);
+    }
+
+    /**
+     * Force-start a build for a session that has a plan but was never approved
+     * (i.e. stuck in PLAN_REVIEW). Approves the plan on the user's behalf and
+     * launches the pipeline — the admin equivalent of the user clicking
+     * "Approve". Writable @Transactional so BuildLauncher's after-commit async
+     * kickoff sees the committed iteration row.
+     */
+    @Transactional
+    public BuildIteration startBuildForSession(UUID sessionId) {
+        BuildSession session = buildSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new NotFoundException("Build session not found"));
+        if (planDocumentRepository.findBySessionId(sessionId).isEmpty()) {
+            throw new ValidationException("Session has no plan to build (current: " + session.getStatus() + ")");
+        }
+        log.info("Admin force-building session {} (was {})", sessionId, session.getStatus());
+        buildSessionService.updateStatus(sessionId, BuildStatus.APPROVED);
+        return buildLauncher.startBuild(sessionId, "ADMIN_BUILD");
     }
 
     /**

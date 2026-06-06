@@ -184,6 +184,24 @@ public class AdminController {
     }
 
     /**
+     * Force-build a session that has a plan but was never approved (stuck in
+     * PLAN_REVIEW). Approves on the user's behalf and launches the pipeline.
+     */
+    @PostMapping("/builds/{sessionId}/build")
+    public ResponseEntity<BuildIterationDto> startBuild(@PathVariable UUID sessionId) {
+        BuildIteration iteration = adminService.startBuildForSession(sessionId);
+        return ResponseEntity.accepted().body(new BuildIterationDto(
+                iteration.getId(),
+                iteration.getSessionId(),
+                iteration.getIterationNumber(),
+                iteration.getStatus(),
+                iteration.getTrigger(),
+                iteration.getStartedAt(),
+                iteration.getCompletedAt()
+        ));
+    }
+
+    /**
      * Move a FAILED session back to an actionable state. Behaviour
      * depends on which artifacts exist — see {@link RetriggerResponse}
      * for the three possible outcomes (pipeline restart vs. reset to
