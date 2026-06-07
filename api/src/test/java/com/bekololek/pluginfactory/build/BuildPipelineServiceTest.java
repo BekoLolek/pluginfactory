@@ -146,7 +146,7 @@ class BuildPipelineServiceTest {
         when(buildIterationRepository.save(any(BuildIteration.class))).thenAnswer(inv -> inv.getArgument(0));
 
         String containerId = "container-123";
-        when(containerPoolManager.claimContainer(DockerService.ContainerType.BUILD)).thenReturn(containerId);
+        when(containerPoolManager.claimCleanBuildContainer()).thenReturn(containerId);
         when(containerSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         when(dockerService.executeCommand(eq(containerId), any(), any(), any()))
@@ -223,7 +223,7 @@ class BuildPipelineServiceTest {
         when(buildIterationRepository.save(any(BuildIteration.class))).thenAnswer(inv -> inv.getArgument(0));
 
         String containerId = "container-456";
-        when(containerPoolManager.claimContainer(DockerService.ContainerType.BUILD)).thenReturn(containerId);
+        when(containerPoolManager.claimCleanBuildContainer()).thenReturn(containerId);
         when(containerSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         when(dockerService.executeCommand(eq(containerId), any(), any(), any()))
@@ -275,7 +275,7 @@ class BuildPipelineServiceTest {
         when(buildIterationRepository.save(any(BuildIteration.class))).thenAnswer(inv -> inv.getArgument(0));
 
         String containerId = "container-789";
-        when(containerPoolManager.claimContainer(DockerService.ContainerType.BUILD)).thenReturn(containerId);
+        when(containerPoolManager.claimCleanBuildContainer()).thenReturn(containerId);
         when(containerSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         when(dockerService.executeCommand(eq(containerId), any(), any(), any()))

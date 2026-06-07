@@ -209,17 +209,31 @@ public class DockerService {
         // Our commands (mvn clean package, server boot, rm -rf) are safe to
         // re-run, and the transient almost always strikes at exec-create time
         // before the command runs.
-        return withDockerRetry("executeCommand", () -> executeCommandOnce(containerId, command));
+        return withDockerRetry("executeCommand", () -> executeCommandOnce(null, containerId, command));
     }
 
-    private ExecResult executeCommandOnce(String containerId, String... command) {
+    /**
+     * Run a command as {@code root} (uid 0) inside the container. Needed for
+     * workspace cleanup: files copied in via {@code docker cp} are owned by
+     * root, so a {@code find -delete} run as the image's unprivileged build
+     * user hits permission-denied and silently leaves stale sources behind —
+     * which then compile into the next pooled build (cross-session leakage).
+     */
+    public ExecResult executeCommandAsRoot(String containerId, String... command) {
+        return withDockerRetry("executeCommandAsRoot", () -> executeCommandOnce("0", containerId, command));
+    }
+
+    private ExecResult executeCommandOnce(String user, String containerId, String... command) {
         requireClient();
 
-        ExecCreateCmdResponse execCreate = dockerClient.execCreateCmd(containerId)
+        var execCmd = dockerClient.execCreateCmd(containerId)
                 .withAttachStdout(true)
                 .withAttachStderr(true)
-                .withCmd(command)
-                .exec();
+                .withCmd(command);
+        if (user != null) {
+            execCmd.withUser(user);
+        }
+        ExecCreateCmdResponse execCreate = execCmd.exec();
 
         StringBuilder stdout = new StringBuilder();
         StringBuilder stderr = new StringBuilder();

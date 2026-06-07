@@ -30,7 +30,7 @@ class ContainerPoolManagerTest {
                 .thenReturn("container-1");
 
         // Manually add a container to the pool by creating and releasing
-        when(dockerService.executeCommand(eq("container-1"), any(String[].class)))
+        when(dockerService.executeCommandAsRoot(eq("container-1"), any(String[].class)))
                 .thenReturn(new ExecResult(0, "", ""));
 
         String containerId = poolManager.claimContainer(DockerService.ContainerType.BUILD);
@@ -60,7 +60,7 @@ class ContainerPoolManagerTest {
     void releaseBackToPool() {
         when(dockerService.createContainer(eq(DockerService.ContainerType.TEST), any()))
                 .thenReturn("test-container");
-        when(dockerService.executeCommand(eq("test-container"), any(String[].class)))
+        when(dockerService.executeCommandAsRoot(eq("test-container"), any(String[].class)))
                 .thenReturn(new ExecResult(0, "", ""));
 
         String containerId = poolManager.claimContainer(DockerService.ContainerType.TEST);
@@ -121,7 +121,7 @@ class ContainerPoolManagerTest {
     void releaseContainer_removesOnFailure() {
         when(dockerService.createContainer(eq(DockerService.ContainerType.BUILD), any()))
                 .thenReturn("failing-container");
-        when(dockerService.executeCommand(eq("failing-container"), any(String[].class)))
+        when(dockerService.executeCommandAsRoot(eq("failing-container"), any(String[].class)))
                 .thenThrow(new RuntimeException("container stopped"));
 
         String containerId = poolManager.claimContainer(DockerService.ContainerType.BUILD);
@@ -129,5 +129,34 @@ class ContainerPoolManagerTest {
 
         verify(dockerService).removeContainer("failing-container");
         assertThat(poolManager.getPoolStatus().get("warmBuild")).isZero();
+    }
+
+    @Test
+    void claimCleanBuildContainer_returnsContainerWithEmptyWorkspace() {
+        when(dockerService.createContainer(eq(DockerService.ContainerType.BUILD), any()))
+                .thenReturn("clean-1");
+        // Empty stdout from the wipe+list = verified clean.
+        when(dockerService.executeCommandAsRoot(eq("clean-1"), any(String[].class)))
+                .thenReturn(new ExecResult(0, "", ""));
+
+        String id = poolManager.claimCleanBuildContainer();
+
+        assertThat(id).isEqualTo("clean-1");
+    }
+
+    @Test
+    void claimCleanBuildContainer_discardsDirtyContainerAndRetries() {
+        when(dockerService.createContainer(eq(DockerService.ContainerType.BUILD), any()))
+                .thenReturn("dirty-1", "clean-2");
+        // First container still lists a leftover file (dirty); second is empty.
+        when(dockerService.executeCommandAsRoot(eq("dirty-1"), any(String[].class)))
+                .thenReturn(new ExecResult(0, "/plugin-workspace/src/Foo.java", ""));
+        when(dockerService.executeCommandAsRoot(eq("clean-2"), any(String[].class)))
+                .thenReturn(new ExecResult(0, "", ""));
+
+        String id = poolManager.claimCleanBuildContainer();
+
+        assertThat(id).isEqualTo("clean-2");
+        verify(dockerService).removeContainer("dirty-1");
     }
 }
