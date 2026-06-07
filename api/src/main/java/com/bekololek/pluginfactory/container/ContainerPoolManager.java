@@ -113,7 +113,9 @@ public class ContainerPoolManager {
                     continue;
                 }
                 log.info("Reaping orphaned factory container {} (not owned by this instance)", id);
-                dockerService.stopContainer(id);
+                // Force-remove directly: an orphan needs no graceful shutdown,
+                // and skipping the 10s stop timeout keeps startup snappy even
+                // when reaping a large backlog.
                 dockerService.removeContainer(id);
                 reaped++;
             }
