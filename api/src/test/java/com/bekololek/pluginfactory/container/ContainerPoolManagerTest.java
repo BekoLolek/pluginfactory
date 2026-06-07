@@ -88,6 +88,36 @@ class ContainerPoolManagerTest {
     }
 
     @Test
+    void reapOrphans_removesUnownedManagedContainers() {
+        // Two managed containers exist in Docker; this instance owns neither
+        // (its pool is empty), so both are orphans from a prior instance.
+        when(dockerService.listManagedContainerIds())
+                .thenReturn(java.util.List.of("orphan-a", "orphan-b"));
+
+        poolManager.reapOrphans();
+
+        verify(dockerService).removeContainer("orphan-a");
+        verify(dockerService).removeContainer("orphan-b");
+    }
+
+    @Test
+    void reapOrphans_keepsContainersThisInstanceOwns() {
+        // Claim a container so this instance owns it...
+        when(dockerService.createContainer(eq(DockerService.ContainerType.BUILD), any()))
+                .thenReturn("mine");
+        String mine = poolManager.claimContainer(DockerService.ContainerType.BUILD);
+
+        // ...and have Docker report it plus a real orphan as managed.
+        when(dockerService.listManagedContainerIds())
+                .thenReturn(java.util.List.of(mine, "orphan"));
+
+        poolManager.reapOrphans();
+
+        verify(dockerService).removeContainer("orphan");
+        verify(dockerService, never()).removeContainer("mine");
+    }
+
+    @Test
     void releaseContainer_removesOnFailure() {
         when(dockerService.createContainer(eq(DockerService.ContainerType.BUILD), any()))
                 .thenReturn("failing-container");

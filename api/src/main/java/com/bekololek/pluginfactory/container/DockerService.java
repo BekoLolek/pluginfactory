@@ -82,14 +82,43 @@ public class DockerService {
                 .map(e -> e.getKey() + "=" + e.getValue())
                 .toArray(String[]::new);
 
+        // Label every factory-spawned container so orphans from a previous
+        // API instance (the in-memory pool is lost on restart) can be found
+        // and reaped without guessing from image ancestry. MANAGED_LABEL is
+        // the marker; the role is informational.
+        Map<String, String> labels = Map.of(
+                MANAGED_LABEL, "true",
+                "pluginfactory.role", type.name().toLowerCase());
+
         CreateContainerResponse response = withDockerRetry("createContainer", () ->
                 dockerClient.createContainerCmd(image)
                         .withEnv(envArray)
+                        .withLabels(labels)
                         .withHostConfig(securityConfig.getSecurityConstraints(type))
                         .exec());
 
         log.info("Created {} container: {}", type, response.getId());
         return response.getId();
+    }
+
+    /** Marker label applied to every container the factory creates. */
+    public static final String MANAGED_LABEL = "pluginfactory.managed";
+
+    /**
+     * IDs of all factory-managed containers currently known to Docker
+     * (running or exited), regardless of which API instance created them.
+     * Used to reap orphans left behind by a previous instance's lost pool.
+     */
+    public java.util.List<String> listManagedContainerIds() {
+        requireClient();
+        return withDockerRetry("listManaged", () ->
+                dockerClient.listContainersCmd()
+                        .withShowAll(true)
+                        .withLabelFilter(Map.of(MANAGED_LABEL, "true"))
+                        .exec()
+                        .stream()
+                        .map(com.github.dockerjava.api.model.Container::getId)
+                        .toList());
     }
 
     /**
