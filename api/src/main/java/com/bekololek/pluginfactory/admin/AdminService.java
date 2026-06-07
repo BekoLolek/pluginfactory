@@ -13,9 +13,11 @@ import com.bekololek.pluginfactory.marketplace.Purchase;
 import com.bekololek.pluginfactory.marketplace.PurchaseRepository;
 import com.bekololek.pluginfactory.plan.PlanDocument;
 import com.bekololek.pluginfactory.plan.PlanDocumentRepository;
+import com.bekololek.pluginfactory.plan.TokenEstimateService;
 import com.bekololek.pluginfactory.plan.dto.*;
 import com.bekololek.pluginfactory.subscription.Subscription;
 import com.bekololek.pluginfactory.subscription.SubscriptionRepository;
+import com.bekololek.pluginfactory.subscription.SubscriptionService;
 import com.bekololek.pluginfactory.subscription.Tier;
 import com.bekololek.pluginfactory.team.Team;
 import com.bekololek.pluginfactory.team.TeamMember;
@@ -68,6 +70,8 @@ public class AdminService {
     private final ChatMessageService chatMessageService;
     private final ChatbotAgent chatbotAgent;
     private final BuildLauncher buildLauncher;
+    private final SubscriptionService subscriptionService;
+    private final TokenEstimateService tokenEstimateService;
     private final ObjectMapper objectMapper;
 
     // ── Overview ──────────────────────────────────────────────────────
@@ -368,12 +372,20 @@ public class AdminService {
     }
 
     public PlanDocumentDto getSessionPlan(UUID sessionId) {
-        if (buildSessionRepository.findById(sessionId).isEmpty()) {
-            throw new NotFoundException("Build session not found");
-        }
+        BuildSession session = buildSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new NotFoundException("Build session not found"));
         PlanDocument plan = planDocumentRepository.findBySessionId(sessionId)
                 .orElseThrow(() -> new NotFoundException("Plan not found for this session"));
-        return toPlanDto(plan);
+
+        TokenEstimate estimate = null;
+        try {
+            Tier tier = subscriptionService.getTierForUser(session.getUserId());
+            int remaining = subscriptionService.getRemainingMonthlyTokens(session.getUserId());
+            estimate = tokenEstimateService.estimate(plan, tier, remaining);
+        } catch (Exception ignored) {
+            // Estimate is best-effort for the admin view; never fail the plan fetch over it.
+        }
+        return toPlanDto(plan, estimate);
     }
 
     // ── Chat (admin viewer + send-as-user) ────────────────────────────
@@ -418,7 +430,7 @@ public class AdminService {
         return chatbotAgent.handleMessage(sessionId, session.getUserId(), content);
     }
 
-    private PlanDocumentDto toPlanDto(PlanDocument plan) {
+    private PlanDocumentDto toPlanDto(PlanDocument plan, TokenEstimate estimate) {
         return new PlanDocumentDto(
                 plan.getId(),
                 plan.getSessionId(),
@@ -438,7 +450,7 @@ public class AdminService {
                 plan.getViabilityStatus(),
                 parsePlanJson(plan.getSetupSteps(), new TypeReference<java.util.List<String>>() {}),
                 parsePlanJson(plan.getAutoHandled(), new TypeReference<java.util.List<String>>() {}),
-                null // build-cost estimate is surfaced on the user-facing plan endpoint
+                estimate
         );
     }
 
