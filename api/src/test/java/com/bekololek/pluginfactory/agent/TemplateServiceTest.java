@@ -156,6 +156,49 @@ class TemplateServiceTest {
         assertThat(pom).doesNotContain("}}");
     }
 
+    @Test
+    void renderTemplate_descriptionWithQuotes_producesValidYaml() {
+        PlanDocument plan = createTestPlan();
+        // The exact shape that broke a real build: embedded quotes + angle
+        // brackets in the description made plugin.yml invalid YAML, so the
+        // plugin never loaded and its listeners never registered.
+        plan.setDescription("chat plugin that responds with \"Hello <player>\" when any player says hello");
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+        String pluginYml = files.get("src/main/resources/plugin.yml");
+
+        // Must parse cleanly as YAML (no ParserException) and round-trip the
+        // description with its quotes intact.
+        Object parsed = new org.yaml.snakeyaml.Yaml().load(pluginYml);
+        assertThat(parsed).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> root = (Map<String, Object>) parsed;
+        assertThat((String) root.get("description")).contains("\"Hello <player>\"");
+        assertThat((String) root.get("name")).isEqualTo("Test Plugin");
+    }
+
+    @Test
+    void renderTemplate_commandDescriptionWithQuotes_producesValidYaml() {
+        PlanDocument plan = createTestPlan();
+        plan.setCommands("[{\"name\":\"say\",\"description\":\"echo a \\\"quoted\\\" phrase: now\",\"usage\":\"/say <msg>\"}]");
+
+        Map<String, String> files = templateService.renderTemplate(plan);
+        String pluginYml = files.get("src/main/resources/plugin.yml");
+
+        // Parsing must not throw — the command description's quotes and colon
+        // are escaped, not left to break the block mapping.
+        Object parsed = new org.yaml.snakeyaml.Yaml().load(pluginYml);
+        assertThat(parsed).isInstanceOf(Map.class);
+    }
+
+    @Test
+    void yamlDq_escapesQuotesAndBackslashes() {
+        assertThat(TemplateService.yamlDq("a \"b\" c")).isEqualTo("a \\\"b\\\" c");
+        assertThat(TemplateService.yamlDq("path\\to")).isEqualTo("path\\\\to");
+        assertThat(TemplateService.yamlDq("line1\nline2")).isEqualTo("line1 line2");
+        assertThat(TemplateService.yamlDq(null)).isEqualTo("");
+    }
+
     private PlanDocument createTestPlan() {
         PlanDocument plan = new PlanDocument();
         plan.setPluginName("Test Plugin");

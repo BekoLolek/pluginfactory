@@ -31,6 +31,7 @@ public class TestServerService {
     private static final Pattern FAILURE = Pattern.compile(
             "(?im)^.*(Could not load '?plugins|Error occurred while enabling|"
                     + "Exception while enabling|Could not load plugin|"
+                    + "Error loading plugin|Invalid plugin\\.yml|InvalidDescriptionException|"
                     + "is misconfigured|Unsupported API version).*$");
 
     public record SmokeResult(boolean passed, String detail) {}
@@ -67,7 +68,7 @@ public class TestServerService {
                     + "PID=$!; "
                     + "for i in $(seq 1 " + MAX_WAIT_SECONDS + "); do "
                     + "  grep -q 'Done (' run.log && break; "
-                    + "  grep -Eqi \"Could not load|while enabling|Unsupported API version|is misconfigured\" run.log && break; "
+                    + "  grep -Eqi \"Could not load|while enabling|Unsupported API version|is misconfigured|Invalid plugin.yml|Error loading plugin\" run.log && break; "
                     + "  kill -0 $PID 2>/dev/null || break; "
                     + "  sleep 1; "
                     + "done; "

@@ -65,7 +65,7 @@ public class TemplateService {
                 .replace("{{version}}", version)
                 .replace("{{mainClassName}}", mainClassName)
                 .replace("{{apiVersion}}", apiVersion)
-                .replace("{{description}}", description)
+                .replace("{{description}}", yamlDq(description))
                 .replace("{{commandsYaml}}", commandsYaml)
                 .replace("{{permissionsYaml}}", permissionsYaml);
         files.put("src/main/resources/plugin.yml", pluginYml);
@@ -77,6 +77,28 @@ public class TemplateService {
         return files;
     }
 
+
+    /**
+     * Escape a string for safe embedding inside a YAML double-quoted scalar.
+     * Free-text plugin.yml fields (the plugin description, command usage, etc.)
+     * come from the plan and routinely contain quotes, colons and angle
+     * brackets — e.g. {@code responds with "Hello <player>"}. Injected raw into
+     * {@code description: "..."} those bare quotes break snakeyaml, the plugin
+     * fails to load with InvalidDescriptionException, and its listeners never
+     * register (the plugin silently does nothing). In a YAML double-quoted
+     * scalar only backslash and double-quote must be escaped; we also collapse
+     * newlines/tabs to keep the value on one line.
+     */
+    static String yamlDq(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r", " ")
+                .replace("\n", " ")
+                .replace("\t", " ");
+    }
 
     String toClassName(String pluginName) {
         if (pluginName == null || pluginName.isBlank()) {
@@ -230,8 +252,8 @@ public class TemplateService {
                 String usage = (String) cmd.getOrDefault("usage", "/" + rootName);
                 if (!usage.startsWith("/" + rootName)) usage = "/" + rootName + " <subcommand> [args]";
                 sb.append("  ").append(rootName).append(":\n");
-                sb.append("    description: \"").append(desc).append("\"\n");
-                sb.append("    usage: \"").append(usage).append("\"\n");
+                sb.append("    description: \"").append(yamlDq(desc)).append("\"\n");
+                sb.append("    usage: \"").append(yamlDq(usage)).append("\"\n");
             }
             return sb.toString().stripTrailing();
         } catch (Exception e) {
@@ -254,7 +276,7 @@ public class TemplateService {
                 String permission = (String) cmd.getOrDefault("permission", "plugin." + name);
                 if (!seenPerms.add(permission)) continue;
                 sb.append("  ").append(permission).append(":\n");
-                sb.append("    description: \"Allows use of /").append(name).append("\"\n");
+                sb.append("    description: \"Allows use of /").append(yamlDq(name)).append("\"\n");
                 sb.append("    default: op\n");
             }
             return sb.toString().stripTrailing();
