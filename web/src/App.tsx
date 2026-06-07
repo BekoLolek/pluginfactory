@@ -1,8 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import NotificationToast from '@/components/NotificationToast';
 import ServiceUnavailablePage from '@/components/ServiceUnavailablePage';
+import MaintenancePage from '@/components/MaintenancePage';
+import { getSystemStatus } from '@/api/system';
 import { useServiceStatusStore } from '@/stores/serviceStatusStore';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardLayout from '@/layouts/DashboardLayout';
@@ -46,11 +48,30 @@ function ServiceUnavailableGate() {
   return <ServiceUnavailablePage />;
 }
 
+/**
+ * Polls the public system-status endpoint and, when maintenance mode is on,
+ * renders the full-screen maintenance page over the entire app. Admins flip
+ * the flag from the dashboard; the short poll interval means users see the
+ * page (and its lift) within ~30s without a manual refresh.
+ */
+function MaintenanceGate() {
+  const { data } = useQuery({
+    queryKey: ['system-status'],
+    queryFn: getSystemStatus,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+  if (!data?.maintenance) return null;
+  return <MaintenancePage discordUrl={data.discordUrl} />;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ServiceUnavailableGate />
+        <MaintenanceGate />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LandingPage />} />

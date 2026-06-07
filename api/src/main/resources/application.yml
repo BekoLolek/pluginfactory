@@ -114,6 +114,7 @@ docker:
 
 app:
   base-url: http://localhost:5173
+  discord-url: ${DISCORD_INVITE_URL:}
   email:
     enabled: false
     from: bekololek@pluginfactory.org
@@ -167,6 +168,7 @@ app:
   # No default: deployment must specify canonical public URL. A stale default
   # (e.g. a previous hostname) would silently break Stripe redirect URLs.
   base-url: ${APP_BASE_URL}
+  discord-url: ${DISCORD_INVITE_URL:}
   email:
     enabled: true
     from: bekololek@pluginfactory.org

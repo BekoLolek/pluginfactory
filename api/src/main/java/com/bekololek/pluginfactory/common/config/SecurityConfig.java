@@ -52,6 +52,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/subscriptions/tiers").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/system/status").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/marketplace/plugins").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/marketplace/plugins/*/reviews").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/marketplace/plugins/*").permitAll()

@@ -29,6 +29,7 @@ public class AdminController {
 
     private final AdminService adminService;
     private final EmailNotificationService emailNotificationService;
+    private final com.bekololek.pluginfactory.system.SystemSettingService systemSettingService;
 
     @GetMapping("/overview")
     public ResponseEntity<OverviewResponse> getOverview() {
@@ -216,5 +217,21 @@ public class AdminController {
     public ResponseEntity<Map<String, String>> sendEmail(@RequestBody AdminSendEmailRequest request) {
         emailNotificationService.sendManual(request.recipientEmail(), request.template(), request.customMessage());
         return ResponseEntity.ok(Map.of("status", "queued"));
+    }
+
+    /** Current maintenance-mode flag (user-facing web app down page). */
+    @GetMapping("/maintenance")
+    public ResponseEntity<com.bekololek.pluginfactory.system.dto.MaintenanceDto> getMaintenance() {
+        return ResponseEntity.ok(new com.bekololek.pluginfactory.system.dto.MaintenanceDto(
+                systemSettingService.isMaintenanceMode()));
+    }
+
+    /** Toggle maintenance mode on/off; returns the resulting state. */
+    @PostMapping("/maintenance")
+    public ResponseEntity<com.bekololek.pluginfactory.system.dto.MaintenanceDto> setMaintenance(
+            @RequestBody com.bekololek.pluginfactory.system.dto.MaintenanceDto request) {
+        systemSettingService.setMaintenanceMode(request.enabled());
+        return ResponseEntity.ok(new com.bekololek.pluginfactory.system.dto.MaintenanceDto(
+                systemSettingService.isMaintenanceMode()));
     }
 }
