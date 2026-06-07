@@ -105,20 +105,31 @@ public class DockerService {
     public static final String MANAGED_LABEL = "pluginfactory.managed";
 
     /**
-     * IDs of all factory-managed containers currently known to Docker
-     * (running or exited), regardless of which API instance created them.
-     * Used to reap orphans left behind by a previous instance's lost pool.
+     * IDs of all factory containers currently known to Docker (running or
+     * exited), regardless of which API instance created them. Used to reap
+     * orphans left behind by a previous instance's lost pool.
+     *
+     * <p>Matches on both the {@link #MANAGED_LABEL} (containers created since
+     * labelling was introduced) and the factory build/test image ancestry
+     * (legacy containers created before the label existed), so a single deploy
+     * clears the entire pre-existing orphan backlog.
      */
     public java.util.List<String> listManagedContainerIds() {
         requireClient();
-        return withDockerRetry("listManaged", () ->
-                dockerClient.listContainersCmd()
-                        .withShowAll(true)
-                        .withLabelFilter(Map.of(MANAGED_LABEL, "true"))
-                        .exec()
-                        .stream()
-                        .map(com.github.dockerjava.api.model.Container::getId)
-                        .toList());
+        return withDockerRetry("listManaged", () -> {
+            java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+            dockerClient.listContainersCmd()
+                    .withShowAll(true)
+                    .withLabelFilter(Map.of(MANAGED_LABEL, "true"))
+                    .exec()
+                    .forEach(c -> ids.add(c.getId()));
+            dockerClient.listContainersCmd()
+                    .withShowAll(true)
+                    .withAncestorFilter(java.util.List.of(buildImage, testImage))
+                    .exec()
+                    .forEach(c -> ids.add(c.getId()));
+            return java.util.List.copyOf(ids);
+        });
     }
 
     /**
