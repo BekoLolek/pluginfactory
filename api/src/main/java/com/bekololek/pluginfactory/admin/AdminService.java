@@ -437,7 +437,8 @@ public class AdminService {
                 plan.getCreatedAt(),
                 plan.getViabilityStatus(),
                 parsePlanJson(plan.getSetupSteps(), new TypeReference<java.util.List<String>>() {}),
-                parsePlanJson(plan.getAutoHandled(), new TypeReference<java.util.List<String>>() {})
+                parsePlanJson(plan.getAutoHandled(), new TypeReference<java.util.List<String>>() {}),
+                null // build-cost estimate is surfaced on the user-facing plan endpoint
         );
     }
 

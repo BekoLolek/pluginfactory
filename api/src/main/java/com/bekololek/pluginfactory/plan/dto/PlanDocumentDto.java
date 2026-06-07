@@ -22,6 +22,7 @@ public record PlanDocumentDto(
         Instant createdAt,
         String viabilityStatus,
         java.util.List<String> setupSteps,
-        java.util.List<String> autoHandled
+        java.util.List<String> autoHandled,
+        TokenEstimate estimate
 ) {
 }

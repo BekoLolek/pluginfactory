@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(PlanController.class)
-@Import({SecurityConfig.class, CorsConfig.class, JwtAuthenticationFilter.class})
+@Import({SecurityConfig.class, CorsConfig.class, JwtAuthenticationFilter.class, TokenEstimateService.class})
 @TestPropertySource(properties = {
         "cors.allowed-origins=http://localhost:5173",
         "jwt.secret=test-secret-key-at-least-256-bits-long-for-hs256-algorithm-testing-only",
@@ -135,6 +135,7 @@ class PlanControllerTest {
         when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
         when(planDocumentRepository.findBySessionId(sessionId)).thenReturn(Optional.of(plan));
         when(subscriptionService.getTierForUser(userId)).thenReturn(Tier.PRO);
+        when(subscriptionService.getRemainingMonthlyTokens(userId)).thenReturn(900_000);
         when(scopeGatingService.validateScope(any(), eq(Tier.PRO)))
                 .thenReturn(new ScopeGatingService.ScopeValidationResult(
                         ScopeGatingService.ScopeStatus.PASS, List.of()));
@@ -145,6 +146,33 @@ class PlanControllerTest {
                 .andExpect(jsonPath("$.pluginName").value("TestPlugin"));
 
         verify(buildLauncher).startBuild(sessionId, "INITIAL");
+    }
+
+    @Test
+    void approvePlan_exceedsBudget_returns422() throws Exception {
+        String token = setupAuth();
+        BuildSession session = new BuildSession();
+        session.setId(sessionId);
+        session.setUserId(userId);
+
+        PlanDocument plan = createPlan();
+
+        when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
+        when(planDocumentRepository.findBySessionId(sessionId)).thenReturn(Optional.of(plan));
+        when(subscriptionService.getTierForUser(userId)).thenReturn(Tier.FREE);
+        when(scopeGatingService.validateScope(any(), eq(Tier.FREE)))
+                .thenReturn(new ScopeGatingService.ScopeValidationResult(
+                        ScopeGatingService.ScopeStatus.PASS, List.of()));
+        // Scope passes, but only 5k tokens remain — the build needs far more.
+        when(subscriptionService.getRemainingMonthlyTokens(userId)).thenReturn(5_000);
+
+        mockMvc.perform(post("/api/v1/builds/{sessionId}/plan/approve", sessionId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.estimate.verdict").value("EXCEEDS"))
+                .andExpect(jsonPath("$.message").exists());
+
+        verify(buildLauncher, org.mockito.Mockito.never()).startBuild(any(), any());
     }
 
     @Test

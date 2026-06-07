@@ -13,8 +13,10 @@ import com.bekololek.pluginfactory.plan.dto.CommandSpec;
 import com.bekololek.pluginfactory.plan.dto.ConfigEntry;
 import com.bekololek.pluginfactory.plan.dto.DependencySpec;
 import com.bekololek.pluginfactory.plan.dto.EventListenerSpec;
+import com.bekololek.pluginfactory.plan.dto.BudgetFeasibilityDto;
 import com.bekololek.pluginfactory.plan.dto.PlanDocumentDto;
 import com.bekololek.pluginfactory.plan.dto.PlanRevisionRequest;
+import com.bekololek.pluginfactory.plan.dto.TokenEstimate;
 import com.bekololek.pluginfactory.plan.dto.ScopeValidationResultDto;
 import com.bekololek.pluginfactory.plan.dto.TestScenario;
 import com.bekololek.pluginfactory.subscription.SubscriptionService;
@@ -46,6 +48,7 @@ public class PlanController {
     private final SubscriptionService subscriptionService;
     private final ComplexityEstimator complexityEstimator;
     private final ScopeGatingService scopeGatingService;
+    private final TokenEstimateService tokenEstimateService;
     private final PlanGenerationAgent planGenerationAgent;
     private final ChatMessageService chatMessageService;
     private final BuildLauncher buildLauncher;
@@ -59,7 +62,7 @@ public class PlanController {
         PlanDocument plan = planDocumentRepository.findBySessionId(sessionId)
                 .orElseThrow(() -> new NotFoundException("Plan not found"));
 
-        return ResponseEntity.ok(toDto(plan));
+        return ResponseEntity.ok(toDto(plan, estimateFor(plan, userId)));
     }
 
     @PostMapping("/{sessionId}/plan/approve")
@@ -73,19 +76,31 @@ public class PlanController {
         Tier tier = subscriptionService.getTierForUser(userId);
         ScopeGatingService.ScopeValidationResult result = scopeGatingService.validateScope(plan, tier);
 
-        if (result.status() == ScopeGatingService.ScopeStatus.PASS) {
-            // APPROVED is the "queued for build" marker; the pipeline
-            // itself flips it to BUILDING when the worker picks it up.
-            // Without this kickoff call the session would stay in
-            // APPROVED forever because nothing else transitions it.
-            buildSessionService.updateStatus(sessionId, BuildStatus.APPROVED);
-            buildLauncher.startBuild(sessionId, "INITIAL");
-            return ResponseEntity.accepted().body(toDto(plan));
+        if (result.status() != ScopeGatingService.ScopeStatus.PASS) {
+            ScopeValidationResultDto validationDto = new ScopeValidationResultDto(
+                    result.status().name(), result.violations());
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(validationDto);
         }
 
-        ScopeValidationResultDto validationDto = new ScopeValidationResultDto(
-                result.status().name(), result.violations());
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(validationDto);
+        // Token-budget feasibility: don't start a build that can't finish within
+        // the user's remaining monthly budget (incl. testing + realistic retries).
+        int remaining = subscriptionService.getRemainingMonthlyTokens(userId);
+        TokenEstimate estimate = tokenEstimateService.estimate(plan, tier, remaining);
+        if ("EXCEEDS".equals(estimate.verdict())) {
+            String msg = "This plugin needs about %,dk tokens to build (including testing and retries), "
+                    .formatted(estimate.estimatedTotalTokens() / 1000)
+                    + "but you have about %,dk left this month. Simplify the plan or upgrade your plan."
+                    .formatted(remaining / 1000);
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                    .body(new BudgetFeasibilityDto(estimate, msg));
+        }
+
+        // APPROVED is the "queued for build" marker; the pipeline itself flips
+        // it to BUILDING when the worker picks it up. Without this kickoff call
+        // the session would stay in APPROVED forever.
+        buildSessionService.updateStatus(sessionId, BuildStatus.APPROVED);
+        buildLauncher.startBuild(sessionId, "INITIAL");
+        return ResponseEntity.accepted().body(toDto(plan, estimate));
     }
 
     @PostMapping("/{sessionId}/plan/revise")
@@ -125,7 +140,17 @@ public class PlanController {
         }
     }
 
+    private TokenEstimate estimateFor(PlanDocument plan, UUID userId) {
+        Tier tier = subscriptionService.getTierForUser(userId);
+        int remaining = subscriptionService.getRemainingMonthlyTokens(userId);
+        return tokenEstimateService.estimate(plan, tier, remaining);
+    }
+
     private PlanDocumentDto toDto(PlanDocument plan) {
+        return toDto(plan, null);
+    }
+
+    private PlanDocumentDto toDto(PlanDocument plan, TokenEstimate estimate) {
         return new PlanDocumentDto(
                 plan.getId(),
                 plan.getSessionId(),
@@ -144,7 +169,8 @@ public class PlanController {
                 plan.getCreatedAt(),
                 plan.getViabilityStatus(),
                 parseJson(plan.getSetupSteps(), new TypeReference<List<String>>() {}),
-                parseJson(plan.getAutoHandled(), new TypeReference<List<String>>() {})
+                parseJson(plan.getAutoHandled(), new TypeReference<List<String>>() {}),
+                estimate
         );
     }
 
