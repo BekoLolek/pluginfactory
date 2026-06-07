@@ -1,9 +1,17 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApprovePlan, useRevisePlan } from '@/hooks/useBuilds';
-import type { PlanDocument } from '@/types';
+import type { BudgetFeasibility, PlanDocument } from '@/types';
 import type { AxiosError } from 'axios';
 import { classifyComplexity } from '@/utils/complexity';
+
+const fmtK = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`);
+
+const VERDICT_CLASSES: Record<string, string> = {
+  FITS: 'bg-green-500/15 text-green-300',
+  TIGHT: 'bg-amber-500/15 text-amber-300',
+  EXCEEDS: 'bg-red-500/15 text-red-300',
+};
 
 interface PlanReviewPanelProps {
   plan: PlanDocument;
@@ -24,22 +32,31 @@ export default function PlanReviewPanel({
   const [showReviseInput, setShowReviseInput] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [scopeViolation, setScopeViolation] = useState<string[] | null>(null);
+  const [budgetBlock, setBudgetBlock] = useState<BudgetFeasibility | null>(null);
 
   const approveMutation = useApprovePlan(sessionId);
   const reviseMutation = useRevisePlan(sessionId);
 
   const handleApprove = () => {
     setScopeViolation(null);
+    setBudgetBlock(null);
     approveMutation.mutate(undefined, {
       onError: (error: Error) => {
-        const axiosError = error as AxiosError<ScopeViolationResponse>;
+        const axiosError = error as AxiosError<
+          ScopeViolationResponse & Partial<BudgetFeasibility>
+        >;
         if (axiosError.response?.status === 422) {
           const data = axiosError.response.data;
-          setScopeViolation(
-            data?.violations ?? [
-              data?.message ?? 'Plan exceeds your tier scope.',
-            ],
-          );
+          // Budget feasibility block carries an `estimate`; scope violations don't.
+          if (data?.estimate) {
+            setBudgetBlock({ estimate: data.estimate, message: data.message ?? '' });
+          } else {
+            setScopeViolation(
+              data?.violations ?? [
+                data?.message ?? 'Plan exceeds your tier scope.',
+              ],
+            );
+          }
         }
       },
     });
@@ -89,6 +106,25 @@ export default function PlanReviewPanel({
               </span>
             );
           })()}
+          {plan.estimate && (
+            <span
+              className={`px-2 py-0.5 rounded-full font-medium ${
+                VERDICT_CLASSES[plan.estimate.verdict] ?? ''
+              }`}
+              title={`Estimated build cost ~${fmtK(
+                plan.estimate.estimatedTotalTokens,
+              )} tokens over ~${plan.estimate.expectedAttempts} attempts (includes testing & retries). You have ~${fmtK(
+                plan.estimate.remainingBudget,
+              )} tokens left this month.`}
+            >
+              ~{fmtK(plan.estimate.estimatedTotalTokens)} tokens
+              {plan.estimate.verdict === 'EXCEEDS'
+                ? ' · over budget'
+                : plan.estimate.verdict === 'TIGHT'
+                  ? ' · tight'
+                  : ' · fits budget'}
+            </span>
+          )}
         </div>
       </div>
 
@@ -256,6 +292,27 @@ export default function PlanReviewPanel({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Budget Feasibility Block */}
+      {budgetBlock && (
+        <div className="mx-6 mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+          <p className="text-sm font-medium text-red-400 mb-1">
+            This build won't fit your token budget
+          </p>
+          <p className="text-sm text-red-300">{budgetBlock.message}</p>
+          <p className="text-xs text-red-300/70 mt-2">
+            Estimated ~{fmtK(budgetBlock.estimate.estimatedTotalTokens)} tokens
+            (≈{budgetBlock.estimate.expectedAttempts} attempts, incl. testing &
+            retries) · ~{fmtK(budgetBlock.estimate.remainingBudget)} left.
+          </p>
+          <Link
+            to="/dashboard/settings/subscription"
+            className="inline-block mt-3 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            Upgrade your plan
+          </Link>
         </div>
       )}
 

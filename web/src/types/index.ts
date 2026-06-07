@@ -89,6 +89,20 @@ export interface PlanDocument {
   complexityScore: number;
   version: number;
   createdAt: string;
+  estimate?: TokenEstimate | null;
+}
+
+export interface TokenEstimate {
+  perAttemptTokens: number;
+  expectedAttempts: number;
+  estimatedTotalTokens: number;
+  remainingBudget: number;
+  verdict: 'FITS' | 'TIGHT' | 'EXCEEDS';
+}
+
+export interface BudgetFeasibility {
+  estimate: TokenEstimate;
+  message: string;
 }
 
 export interface CommandSpec {
