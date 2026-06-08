@@ -23,6 +23,7 @@ public class TestServerService {
 
     private final DockerService dockerService;
     private final ContainerPoolManager containerPoolManager;
+    private final com.bekololek.pluginfactory.build.BuildLogRecorder buildLogRecorder;
 
     /** Max seconds to wait for the server to reach "Done (" or fail. */
     private static final int MAX_WAIT_SECONDS = 120;
@@ -36,7 +37,8 @@ public class TestServerService {
 
     public record SmokeResult(boolean passed, String detail) {}
 
-    public SmokeResult runSmokeTest(byte[] jarBytes, String pluginName) {
+    public SmokeResult runSmokeTest(byte[] jarBytes, String pluginName,
+                                    java.util.UUID sessionId, java.util.UUID iterationId) {
         if (jarBytes == null || jarBytes.length == 0) {
             return new SmokeResult(false, "No JAR was produced to test.");
         }
@@ -75,7 +77,9 @@ public class TestServerService {
                     + "kill $PID 2>/dev/null || true; sleep 3; kill -9 $PID 2>/dev/null || true; "
                     + "cat run.log";
             ExecResult result = dockerService.executeCommand(containerId, "sh", "-c", script);
-            return evaluate(result.stdout() + "\n" + result.stderr(), pluginName);
+            String serverLog = result.stdout() + "\n" + result.stderr();
+            buildLogRecorder.record(sessionId, iterationId, "RUNTIME", result.exitCode(), serverLog);
+            return evaluate(serverLog, pluginName);
         } catch (Exception e) {
             log.warn("Runtime smoke test infra error for {}: {}", pluginName, e.getMessage());
             // Infra fault, not a plugin fault — don't punish the user's build.

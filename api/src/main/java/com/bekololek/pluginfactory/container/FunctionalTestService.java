@@ -27,6 +27,7 @@ public class FunctionalTestService {
 
     private final DockerService dockerService;
     private final ContainerPoolManager containerPoolManager;
+    private final com.bekololek.pluginfactory.build.BuildLogRecorder buildLogRecorder;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final int MAX_WAIT_SECONDS = 90;
@@ -39,7 +40,8 @@ public class FunctionalTestService {
      */
     public record FunctionalResult(boolean ran, boolean passed, List<ScenarioResult> scenarios, String detail) {}
 
-    public FunctionalResult run(byte[] jarBytes, String pluginName, String scenarioScript) {
+    public FunctionalResult run(byte[] jarBytes, String pluginName, String scenarioScript,
+                                java.util.UUID sessionId, java.util.UUID iterationId) {
         if (scenarioScript == null || scenarioScript.isBlank()) {
             return skipped("no test script generated");
         }
@@ -79,7 +81,9 @@ public class FunctionalTestService {
                     + "echo '===PF_RESULT_END==='; fi; "
                     + "kill $SRV 2>/dev/null || true";
             ExecResult result = dockerService.executeCommand(containerId, "sh", "-c", script);
-            return parse(result.stdout() + "\n" + result.stderr());
+            String output = result.stdout() + "\n" + result.stderr();
+            buildLogRecorder.record(sessionId, iterationId, "FUNCTIONAL", result.exitCode(), output);
+            return parse(output);
         } catch (Exception e) {
             log.warn("Functional test infra error for {}: {}", pluginName, e.getMessage());
             return skipped("infra error: " + e.getMessage());

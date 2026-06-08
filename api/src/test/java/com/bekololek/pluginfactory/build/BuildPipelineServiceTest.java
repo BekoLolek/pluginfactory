@@ -97,6 +97,9 @@ class BuildPipelineServiceTest {
     @Mock
     private SubscriptionService subscriptionService;
 
+    @Mock
+    private BuildLogRecorder buildLogRecorder;
+
     @InjectMocks
     private BuildPipelineService buildPipelineService;
 
@@ -156,7 +159,7 @@ class BuildPipelineServiceTest {
 
         when(securityScanService.scanSource(anyString()))
                 .thenReturn(new SecurityScanResult(true, Collections.emptyList()));
-        when(testServerService.runSmokeTest(any(), any()))
+        when(testServerService.runSmokeTest(any(), any(), any(), any()))
                 .thenReturn(new TestServerService.SmokeResult(true, "enabled cleanly"));
 
         // Owner + tier lookup for the functional-test gate. FREE tier skips

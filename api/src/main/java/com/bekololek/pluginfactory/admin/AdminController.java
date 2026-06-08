@@ -136,6 +136,13 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getSessionPlan(sessionId));
     }
 
+    /** Raw container output (compile / runtime / functional) for a build. */
+    @GetMapping("/builds/{sessionId}/logs")
+    public ResponseEntity<List<com.bekololek.pluginfactory.admin.dto.AdminBuildLog>> getSessionLogs(
+            @PathVariable UUID sessionId) {
+        return ResponseEntity.ok(adminService.getSessionLogs(sessionId));
+    }
+
     /** Read a session's full chat transcript (oldest first). */
     @GetMapping("/builds/{sessionId}/messages")
     public ResponseEntity<List<ChatMessageDto>> getSessionMessages(@PathVariable UUID sessionId) {

@@ -58,6 +58,7 @@ public class BuildPipelineService {
     private final FunctionalTestAgent functionalTestAgent;
     private final FunctionalTestService functionalTestService;
     private final SubscriptionService subscriptionService;
+    private final BuildLogRecorder buildLogRecorder;
 
     /**
      * Hard cap on automatic fix-retries per session, independent of the token
@@ -201,7 +202,8 @@ public class BuildPipelineService {
         buildSessionService.updatePhase(sessionId, BuildPhase.INTEGRATION_TEST);
         buildProgressService.notifyPhaseChange(sessionId, BuildPhase.INTEGRATION_TEST);
         String pluginName = pluginNameFor(files);
-        TestServerService.SmokeResult smoke = testServerService.runSmokeTest(jarBytes, pluginName);
+        TestServerService.SmokeResult smoke = testServerService.runSmokeTest(
+                jarBytes, pluginName, sessionId, iteration.getId());
         if (!smoke.passed()) {
             throw new RuntimeTestException(smoke.detail());
         }
@@ -216,7 +218,8 @@ public class BuildPipelineService {
             FunctionalTestAgent.ScenarioScript script = functionalTestAgent.generate(sessionId, files);
             tokenBudgetService.consumeTokens(sessionId, "testing", script.tokensUsed());
             FunctionalTestService.FunctionalResult fr =
-                    functionalTestService.run(jarBytes, pluginName, script.script());
+                    functionalTestService.run(jarBytes, pluginName, script.script(),
+                            sessionId, iteration.getId());
             // User-facing summary only — counts + failed check NAMES, never the
             // raw bot/assertion output (which goes to the repair context below).
             chatMessageService.addMessage(sessionId, "system", friendlyFunctionalSummary(fr), null, 0);
@@ -306,6 +309,10 @@ public class BuildPipelineService {
             // Run Maven build — cap JVM heap to leave room for OS/native overhead
             ExecResult buildResult = dockerService.executeCommand(containerId,
                     "sh", "-c", "cd /plugin-workspace && MAVEN_OPTS='-Xmx1536m -Xms256m' mvn clean package -q -DskipTests");
+
+            // Persist the full compile output (pass or fail) for the dashboard.
+            buildLogRecorder.record(sessionId, iterationId, "COMPILATION",
+                    buildResult.exitCode(), buildResult.stdout() + "\n" + buildResult.stderr());
 
             if (buildResult.exitCode() != 0) {
                 throw new CompilationException(

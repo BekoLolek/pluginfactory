@@ -56,6 +56,7 @@ public class AdminService {
     private final BuildSessionRepository buildSessionRepository;
     private final BuildIterationRepository buildIterationRepository;
     private final BuildErrorRepository buildErrorRepository;
+    private final com.bekololek.pluginfactory.build.BuildLogRepository buildLogRepository;
     private final TokenBudgetRepository tokenBudgetRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final MarketplaceListingRepository marketplaceListingRepository;
@@ -244,6 +245,15 @@ public class AdminService {
     public List<AdminErrorRecord> getSessionErrors(UUID sessionId) {
         return buildErrorRepository.findBySessionIdOrderByCreatedAtAsc(sessionId).stream()
                 .map(this::toRecord)
+                .toList();
+    }
+
+    /** Captured container output (compile / runtime / functional) for a session. */
+    public List<com.bekololek.pluginfactory.admin.dto.AdminBuildLog> getSessionLogs(UUID sessionId) {
+        return buildLogRepository.findBySessionIdOrderByCreatedAtAsc(sessionId).stream()
+                .map(l -> new com.bekololek.pluginfactory.admin.dto.AdminBuildLog(
+                        l.getId(), l.getIterationId(), l.getPhase(),
+                        l.getExitCode(), l.getContent(), l.getCreatedAt()))
                 .toList();
     }
 

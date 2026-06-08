@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FunctionalTestServiceTest {
 
     // parse() is a pure function of the harness output; deps are unused here.
-    private final FunctionalTestService service = new FunctionalTestService(null, null);
+    private final FunctionalTestService service = new FunctionalTestService(null, null, null);
 
     @Test
     void parsesPassingResult() {

@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TestServerServiceTest {
 
     // evaluate() is a pure function of the server log; deps are unused here.
-    private final TestServerService service = new TestServerService(null, null);
+    private final TestServerService service = new TestServerService(null, null, null);
 
     @Test
     void passesWhenServerReachesDoneWithNoPluginErrors() {
