@@ -47,10 +47,11 @@ export async function getMessages(sessionId: string): Promise<ChatMessage[]> {
 export async function sendMessage(
   sessionId: string,
   content: string,
+  skipClarification?: boolean,
 ): Promise<ChatMessage> {
   const { data } = await client.post<ChatMessage>(
     `/api/v1/builds/${sessionId}/messages`,
-    { content },
+    { content, ...(skipClarification ? { skipClarification: true } : {}) },
   );
   return data;
 }

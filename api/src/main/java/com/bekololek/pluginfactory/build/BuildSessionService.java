@@ -203,4 +203,11 @@ public class BuildSessionService {
         session.setCurrentPhase(phase);
         return buildSessionRepository.save(session);
     }
+
+    /** Enable "skip clarification" mode for a session (build-form toggle). */
+    public BuildSession enableSkipClarification(UUID sessionId) {
+        BuildSession session = getSessionById(sessionId);
+        session.setSkipClarification(true);
+        return buildSessionRepository.save(session);
+    }
 }

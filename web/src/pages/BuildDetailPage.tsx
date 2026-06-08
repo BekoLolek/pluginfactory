@@ -21,6 +21,7 @@ import BuildProgressPanel from '@/components/BuildProgressPanel';
 import LoadingSkeleton from '@/components/LoadingSkeleton';
 import TypingIndicator from '@/components/TypingIndicator';
 import StarterQuestionnaire from '@/components/StarterQuestionnaire';
+import BuildHowToModal, { buildHowToDismissed } from '@/components/BuildHowToModal';
 
 const PHASE_LABELS: Record<string, string> = {
   CLARIFICATION: 'Gathering requirements',
@@ -69,6 +70,10 @@ export default function BuildDetailPage() {
   const [chatStarted, setChatStarted] = useState(false);
   const [showIterate, setShowIterate] = useState(false);
   const [iterateFeedback, setIterateFeedback] = useState('');
+
+  // One-time "how building works" explainer. Shows when the build page opens
+  // unless the user previously ticked "Don't show again" (localStorage).
+  const [showHowTo, setShowHowTo] = useState(() => !buildHowToDismissed());
 
   if (isLoading) {
     return (
@@ -129,12 +134,15 @@ export default function BuildDetailPage() {
     isChatting && !chatStarted && !hasMessages && !sendMessage.isPending;
 
   const handleSend = (content: string) => {
-    sendMessage.mutate(content);
+    sendMessage.mutate({ content });
   };
 
-  const handleQuestionnaireSubmit = (content: string) => {
+  const handleQuestionnaireSubmit = (
+    content: string,
+    skipClarification?: boolean,
+  ) => {
     setChatStarted(true);
-    sendMessage.mutate(content);
+    sendMessage.mutate({ content, skipClarification });
   };
 
   const handleRecover = () => {
@@ -158,6 +166,8 @@ export default function BuildDetailPage() {
 
   return (
     <div className="h-full flex flex-col">
+      {showHowTo && <BuildHowToModal onClose={() => setShowHowTo(false)} />}
+
       {/* Header */}
       <div className="shrink-0 mb-4">
         <div className="flex items-center gap-3 mb-1">

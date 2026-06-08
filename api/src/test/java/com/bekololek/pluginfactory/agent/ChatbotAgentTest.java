@@ -14,6 +14,7 @@ import com.bekololek.pluginfactory.plan.PlanDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -333,6 +334,57 @@ class ChatbotAgentTest {
 
         // Verify sanitizer was called
         verify(promptSanitizer).sanitize(userMessage);
+    }
+
+    @Test
+    void skipClarification_injectsSkipDirectiveIntoSystemPrompt() {
+        String userMessage = "A plugin that says hello in chat";
+        BuildSession session = createSession(BuildStatus.CHATTING, BuildPhase.CLARIFICATION);
+        session.setSkipClarification(true);
+        TokenBudget budget = createBudget(100000, 5000);
+
+        when(promptSanitizer.sanitize(userMessage))
+                .thenReturn(new PromptSanitizer.SanitizationResult(userMessage, Collections.emptyList()));
+        when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
+        when(tokenBudgetService.getRemainingBudget(sessionId)).thenReturn(budget);
+        when(tokenBudgetService.hasBudget(sessionId, 100)).thenReturn(true);
+        when(modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION)).thenReturn("claude-haiku-4-5");
+        when(modelRouter.getMaxTokens(ModelRouter.TaskType.CLARIFICATION)).thenReturn(2048);
+        when(chatMessageService.getMessages(sessionId)).thenReturn(Collections.emptyList());
+        when(anthropicClient.sendMessage(anyString(), anyString(), anyList(), anyInt()))
+                .thenReturn(new AnthropicResponse("I'll build a chat greeter.",
+                        "claude-haiku-4-5", 100, 30));
+
+        chatbotAgent.handleMessage(sessionId, userId, userMessage);
+
+        ArgumentCaptor<String> systemPrompt = ArgumentCaptor.forClass(String.class);
+        verify(anthropicClient).sendMessage(anyString(), systemPrompt.capture(), anyList(), anyInt());
+        assertTrue(systemPrompt.getValue().contains("SKIP-QUESTIONS MODE"),
+                "skip-clarification mode must inject the skip directive into the system prompt");
+    }
+
+    @Test
+    void normalMode_doesNotInjectSkipDirective() {
+        String userMessage = "A plugin that says hello";
+        BuildSession session = createSession(BuildStatus.CHATTING, BuildPhase.CLARIFICATION);
+        TokenBudget budget = createBudget(100000, 5000);
+
+        when(promptSanitizer.sanitize(userMessage))
+                .thenReturn(new PromptSanitizer.SanitizationResult(userMessage, Collections.emptyList()));
+        when(buildSessionService.getSession(sessionId, userId)).thenReturn(session);
+        when(tokenBudgetService.getRemainingBudget(sessionId)).thenReturn(budget);
+        when(tokenBudgetService.hasBudget(sessionId, 100)).thenReturn(true);
+        when(modelRouter.selectModel(ModelRouter.TaskType.CLARIFICATION)).thenReturn("claude-haiku-4-5");
+        when(modelRouter.getMaxTokens(ModelRouter.TaskType.CLARIFICATION)).thenReturn(2048);
+        when(chatMessageService.getMessages(sessionId)).thenReturn(Collections.emptyList());
+        when(anthropicClient.sendMessage(anyString(), anyString(), anyList(), anyInt()))
+                .thenReturn(new AnthropicResponse("What features?", "claude-haiku-4-5", 100, 30));
+
+        chatbotAgent.handleMessage(sessionId, userId, userMessage);
+
+        ArgumentCaptor<String> systemPrompt = ArgumentCaptor.forClass(String.class);
+        verify(anthropicClient).sendMessage(anyString(), systemPrompt.capture(), anyList(), anyInt());
+        assertTrue(!systemPrompt.getValue().contains("SKIP-QUESTIONS MODE"));
     }
 
     private BuildSession createSession(BuildStatus status, BuildPhase phase) {

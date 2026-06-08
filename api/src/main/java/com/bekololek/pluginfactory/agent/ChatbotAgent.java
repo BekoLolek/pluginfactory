@@ -268,9 +268,28 @@ public class ChatbotAgent {
         // The chatbot prompt is phase-aware (it knows about PLAN_REVIEW) and
         // drives real plan generation via the [TRANSITION:PLAN_GENERATION]
         // marker, which routes to PlanGenerationAgent's forced tool-use call.
-        return chatbotSystemPrompt
+        String prompt = chatbotSystemPrompt
                 .replace("{{phase}}", session.getCurrentPhase().name())
                 .replace("{{status}}", session.getStatus().name())
                 .replace("{{remaining_tokens}}", String.valueOf(remainingTokens));
+
+        // "Skip questions" mode: the user opted out of clarification, so the
+        // model must NOT ask anything. It gives one brief confirmation of what
+        // it will build (so the user can catch a big misunderstanding) and then
+        // immediately emits the transition marker to start plan generation.
+        if (session.isSkipClarification() && session.getCurrentPhase() == BuildPhase.CLARIFICATION) {
+            prompt += SKIP_CLARIFICATION_DIRECTIVE;
+        }
+        return prompt;
     }
+
+    private static final String SKIP_CLARIFICATION_DIRECTIVE = """
+
+            ## SKIP-QUESTIONS MODE (the user opted out of clarifying questions)
+            The user has turned on "just build it" — do NOT ask any clarifying
+            questions, and do NOT wait for more input. Make sensible, conventional
+            assumptions for anything unspecified. In 2-3 short sentences, confirm
+            what you will build (so they can catch a major misunderstanding), then
+            on its own line emit exactly [TRANSITION:PLAN_GENERATION]. Do not ask
+            them to confirm or reply first.""";
 }

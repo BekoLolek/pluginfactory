@@ -51,6 +51,12 @@ public class ChatController {
 
         validateSessionStatus(session);
 
+        // "Skip questions — just build it": latch the flag on the session so the
+        // chatbot skips clarification and goes straight to plan generation.
+        if (Boolean.TRUE.equals(request.skipClarification()) && !session.isSkipClarification()) {
+            buildSessionService.enableSkipClarification(sessionId);
+        }
+
         AgentResponse response = chatbotAgent.handleMessage(sessionId, userId, request.content());
         return ResponseEntity.ok(response);
     }

@@ -37,6 +37,14 @@ public class BuildSession extends BaseEntity {
     @Column(name = "complexity_score")
     private Integer complexityScore;
 
+    /**
+     * When true, the chatbot skips clarifying questions and goes straight to
+     * plan generation (after a brief "here's what I'll build" summary). Set
+     * from the build form's "Skip questions — just build it" toggle.
+     */
+    @Column(name = "skip_clarification", nullable = false)
+    private boolean skipClarification = false;
+
     @Column(name = "completed_at")
     private Instant completedAt;
 }

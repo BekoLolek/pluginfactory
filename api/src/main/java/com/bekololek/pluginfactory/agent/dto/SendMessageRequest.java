@@ -4,6 +4,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public record SendMessageRequest(
-        @NotBlank @Size(max = 10000) String content
+        @NotBlank @Size(max = 10000) String content,
+        // Optional: when true (the build form's "skip questions" toggle), the
+        // chatbot skips clarification and goes straight to plan generation.
+        Boolean skipClarification
 ) {
 }

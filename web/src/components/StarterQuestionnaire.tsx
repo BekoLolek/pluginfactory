@@ -13,7 +13,7 @@ import { useState } from 'react';
  * message appear instantly in the chat just like any other send.
  */
 export interface StarterQuestionnaireProps {
-  onSubmit: (composedMessage: string) => void;
+  onSubmit: (composedMessage: string, skipClarification?: boolean) => void;
   onSkip: () => void;
   disabled?: boolean;
 }
@@ -199,6 +199,7 @@ export default function StarterQuestionnaire({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [idea, setIdea] = useState('');
   const [commands, setCommands] = useState('');
+  const [skipQuestions, setSkipQuestions] = useState(false);
 
   const setAnswer = (questionId: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -206,7 +207,7 @@ export default function StarterQuestionnaire({
 
   const handleSubmit = () => {
     if (disabled) return;
-    onSubmit(composeFullMessage(idea, commands, answers));
+    onSubmit(composeFullMessage(idea, commands, answers), skipQuestions);
   };
 
   const answeredCount = Object.keys(answers).length;
@@ -382,7 +383,44 @@ export default function StarterQuestionnaire({
           </div>
         </div>
 
-        <div className="mt-6 flex items-center justify-between gap-3 pt-4 border-t border-slate-700/60">
+        {/* Skip-questions toggle: when on, the assistant won't ask follow-up
+            questions — it briefly confirms what it'll build and goes straight
+            to the plan. Saves the back-and-forth (and the tokens it costs). */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={skipQuestions}
+          onClick={() => setSkipQuestions((v) => !v)}
+          disabled={disabled}
+          className={`mt-5 w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors disabled:opacity-50 ${
+            skipQuestions
+              ? 'bg-blue-600/10 border-blue-500/40'
+              : 'bg-slate-900/40 border-slate-700/60 hover:border-slate-600'
+          }`}
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-slate-200">
+              Skip questions — just build it
+            </span>
+            <span className="block text-xs text-slate-500 mt-0.5">
+              The assistant won't ask follow-ups. It'll confirm what it
+              understood, then start building right away.
+            </span>
+          </span>
+          <span
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+              skipQuestions ? 'bg-blue-500' : 'bg-slate-600'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                skipQuestions ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </span>
+        </button>
+
+        <div className="mt-5 flex items-center justify-between gap-3 pt-4 border-t border-slate-700/60">
           <button
             type="button"
             onClick={onSkip}
@@ -397,7 +435,11 @@ export default function StarterQuestionnaire({
             disabled={disabled}
             className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
           >
-            {hasAnyInput ? 'Start building' : 'Start chatting'}
+            {skipQuestions
+              ? 'Build it'
+              : hasAnyInput
+                ? 'Start building'
+                : 'Start chatting'}
           </button>
         </div>
       </div>

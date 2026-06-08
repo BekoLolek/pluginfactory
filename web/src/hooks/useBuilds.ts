@@ -70,21 +70,28 @@ export function useMessages(sessionId: string) {
   });
 }
 
+export interface SendMessageVars {
+  content: string;
+  /** Build-form "skip questions" toggle — go straight to plan generation. */
+  skipClarification?: boolean;
+}
+
 export function useSendMessage(sessionId: string) {
   const queryClient = useQueryClient();
   return useMutation<
     ChatMessage,
     Error,
-    string,
+    SendMessageVars,
     { previous: ChatMessage[] | undefined }
   >({
     mutationKey: ['sendMessage', sessionId],
-    mutationFn: (content: string) => sendMessage(sessionId, content),
+    mutationFn: ({ content, skipClarification }: SendMessageVars) =>
+      sendMessage(sessionId, content, skipClarification),
     // Optimistically append the user's message to the cached list so it
     // appears instantly in the UI. The refetch in onSettled will replace
     // this placeholder with the server-of-truth messages (which include
     // the assistant's reply) once the request completes.
-    onMutate: async (content) => {
+    onMutate: async ({ content }) => {
       await queryClient.cancelQueries({
         queryKey: ['messages', sessionId],
       });
