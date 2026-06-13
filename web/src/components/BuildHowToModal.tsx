@@ -26,7 +26,7 @@ const COSTS: { label: string; value: string }[] = [
   { label: 'A simple plugin, start to finish', value: '~40,000' },
 ];
 
-const TIERS = 'Free 30k · Basic 300k · Pro 900k · Team 6M';
+const TIERS = 'Free 75k · Basic 300k · Pro 900k · Team 6M';
 
 export default function BuildHowToModal({ onClose }: { onClose: () => void }) {
   const [dontShow, setDontShow] = useState(false);

@@ -55,7 +55,7 @@ class SubscriptionControllerTest {
     void listTiers_containsAllFields() throws Exception {
         mockMvc.perform(get("/api/v1/subscriptions/tiers"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].tokenBudget").value(30000))
+                .andExpect(jsonPath("$[0].tokenBudget").value(75000))
                 .andExpect(jsonPath("$[0].maxParallel").value(0))
                 .andExpect(jsonPath("$[0].maxIterations").value(1))
                 .andExpect(jsonPath("$[0].maxCommands").value(5))
