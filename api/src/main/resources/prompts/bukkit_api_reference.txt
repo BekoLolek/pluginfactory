@@ -160,6 +160,36 @@ Always: BukkitScheduler scheduler = Bukkit.getScheduler();
 - economy.has(OfflinePlayer, double), economy.withdrawPlayer(...), economy.depositPlayer(...)
 - Import net.milkbowl.vault.economy.Economy (provided-scope dep, added automatically when planned).
 
+### Version-specific API names — the TARGET Minecraft version dictates these
+Several Bukkit enum/constant names were RENAMED across versions. Using a name
+that doesn't exist on the plan's target version fails with "cannot find symbol".
+The plan states the target version — honor it.
+
+Enchantments — the static field names changed in 1.20.5 / 1.21:
+- MOST PORTABLE (works on every version) — look up by namespaced key, whose ids
+  are stable across all versions:
+    Enchantment sharpness = Registry.ENCHANTMENT.get(NamespacedKey.minecraft("sharpness"));
+  Stable ids: sharpness, protection, efficiency, unbreaking, fortune, looting,
+  power, feather_falling, respiration, aqua_affinity, mending, sweeping_edge, …
+  Prefer this for anything targeting 1.20.x, or when unsure.
+- If you use the static CONSTANTS instead, choose the set valid for the target:
+    • 1.20.4 and EARLIER (legacy names): DAMAGE_ALL=sharpness,
+      PROTECTION_ENVIRONMENTAL=protection, DIG_SPEED=efficiency,
+      DURABILITY=unbreaking, LOOT_BONUS_BLOCKS=fortune, LOOT_BONUS_MOBS=looting,
+      ARROW_DAMAGE=power, PROTECTION_FALL=feather_falling, OXYGEN=respiration,
+      WATER_WORKER=aqua_affinity.
+    • 1.21 and LATER: the vanilla names exist — SHARPNESS, PROTECTION,
+      EFFICIENCY, UNBREAKING, FORTUNE, LOOTING, POWER, FEATHER_FALLING,
+      RESPIRATION, AQUA_AFFINITY.
+  DO NOT use SHARPNESS/PROTECTION/EFFICIENCY/UNBREAKING/FORTUNE on a 1.20.x
+  target — those fields do not exist there and will not compile.
+
+Attributes — the names changed in 1.21.3:
+    • 1.21.2 and EARLIER: GENERIC_MAX_HEALTH, GENERIC_MOVEMENT_SPEED,
+      GENERIC_ATTACK_DAMAGE, GENERIC_ARMOR, … (note the GENERIC_ prefix).
+    • 1.21.3 and LATER: MAX_HEALTH, MOVEMENT_SPEED, ATTACK_DAMAGE, ARMOR, ….
+  Portable: Registry.ATTRIBUTE.get(NamespacedKey.minecraft("max_health")).
+
 ### Common Pitfalls — DO NOT
 - DO NOT call PluginManager.getRegisteredListeners(plugin) — does not exist.
   Use HandlerList.getRegisteredListeners(plugin) (static).

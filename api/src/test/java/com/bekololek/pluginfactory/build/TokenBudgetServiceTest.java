@@ -200,7 +200,8 @@ class TokenBudgetServiceTest {
 
         int refunded = tokenBudgetService.refundSessionTokens(sessionId);
 
-        assertThat(refunded).isEqualTo(1_250);
+        // Nothing new consumed since the prior refund → 0 credited (incremental).
+        assertThat(refunded).isEqualTo(0);
         // No second debit on the user; no state change written.
         verify(subscriptionService, never()).refundTokens(any(), anyInt());
         verify(tokenBudgetRepository, never()).save(any(TokenBudget.class));
@@ -254,6 +255,27 @@ class TokenBudgetServiceTest {
         assertThatThrownBy(() -> tokenBudgetService.refundSessionTokens(sessionId))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessage("Token budget not found");
+    }
+
+    @Test
+    void refundSessionTokens_topsUpAfterMoreConsumed() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        // An admin refunded 15,998 mid-outage; the build then ran and consumed
+        // up to 87,221 before failing. A second refund should credit the delta.
+        TokenBudget budget = createBudget(sessionId, 200_000, 87_221);
+        budget.setUserId(userId);
+        budget.setRefundedAt(Instant.now().minusSeconds(120));
+        budget.setRefundedAmount(15_998);
+        when(tokenBudgetRepository.findBySessionId(sessionId)).thenReturn(Optional.of(budget));
+
+        int refunded = tokenBudgetService.refundSessionTokens(sessionId);
+
+        assertThat(refunded).isEqualTo(71_223); // 87_221 - 15_998
+        verify(subscriptionService).refundTokens(userId, 71_223);
+        ArgumentCaptor<TokenBudget> captor = ArgumentCaptor.forClass(TokenBudget.class);
+        verify(tokenBudgetRepository).save(captor.capture());
+        assertThat(captor.getValue().getRefundedAmount()).isEqualTo(87_221);
     }
 
     private TokenBudget createBudget(UUID sessionId, int allocated, int consumed) {

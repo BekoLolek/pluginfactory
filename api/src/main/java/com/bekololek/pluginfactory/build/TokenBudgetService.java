@@ -97,21 +97,32 @@ public class TokenBudgetService {
         TokenBudget budget = tokenBudgetRepository.findBySessionId(sessionId)
                 .orElseThrow(() -> new NotFoundException("Token budget not found"));
 
-        if (budget.getRefundedAt() != null) {
-            log.info("Token refund already applied for session {} (amount={})",
-                    sessionId, budget.getRefundedAmount());
-            return budget.getRefundedAmount() != null ? budget.getRefundedAmount() : 0;
+        // Credit only what hasn't already been refunded. This stays idempotent
+        // against double-refunding the same tokens (a repeat call with no new
+        // consumption credits 0), but still tops up when a session consumed more
+        // AFTER an earlier refund — e.g. an admin refunded mid-outage and the
+        // build then burned more tokens before ultimately failing.
+        int consumed = budget.getConsumedTokens();
+        int alreadyRefunded = budget.getRefundedAmount() != null ? budget.getRefundedAmount() : 0;
+        int delta = Math.max(0, consumed - alreadyRefunded);
+
+        if (delta > 0 && budget.getUserId() != null) {
+            subscriptionService.refundTokens(budget.getUserId(), delta);
         }
 
-        int refund = budget.getConsumedTokens();
-        if (refund > 0 && budget.getUserId() != null) {
-            subscriptionService.refundTokens(budget.getUserId(), refund);
+        // Stamp when there's something new to record: a credit (delta > 0) or a
+        // first-ever refund of a zero-consumed session (so a later call doesn't
+        // keep retrying). A repeat call with nothing new is a true no-op.
+        boolean firstStamp = budget.getRefundedAt() == null;
+        if (delta > 0 || firstStamp) {
+            budget.setRefundedAt(Instant.now());
+            budget.setRefundedAmount(Math.max(consumed, alreadyRefunded));
+            tokenBudgetRepository.save(budget);
         }
-
-        budget.setRefundedAt(Instant.now());
-        budget.setRefundedAmount(refund);
-        tokenBudgetRepository.save(budget);
-        log.info("Refunded {} tokens for session {}", refund, sessionId);
-        return refund;
+        if (delta > 0) {
+            log.info("Refunded {} tokens for session {} (total refunded now {})",
+                    delta, sessionId, Math.max(consumed, alreadyRefunded));
+        }
+        return delta;
     }
 }
