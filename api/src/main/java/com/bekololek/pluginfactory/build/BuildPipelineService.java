@@ -410,18 +410,62 @@ public class BuildPipelineService {
             return;
         }
 
+        // A provider outage that outlasted our retries isn't the user's fault —
+        // tell them plainly (and that they can just try again shortly) instead
+        // of leaving a generic failure. No tokens were charged for the failed
+        // provider calls.
+        if (isProviderUnavailable(message)) {
+            chatMessageService.addMessage(sessionId, "system",
+                    "🌐 Our AI provider stayed unavailable through several retries, so this "
+                    + "build was stopped. This is a temporary issue on the provider's side — "
+                    + "please try again in a little while. You weren't charged for the failed "
+                    + "attempts.", null, 0);
+        }
+
         buildSessionService.updateStatus(sessionId, BuildStatus.FAILED);
         buildProgressService.notifyStatusChange(sessionId, BuildStatus.FAILED);
         buildProgressService.notifyError(sessionId, message);
         emailNotificationService.notifyBuildFailed(sessionId, category);
     }
 
+    /**
+     * True when the failure is our AI provider (Anthropic) being briefly
+     * unavailable — an upstream outage / circuit-breaker trip — rather than a
+     * problem with the user's plugin. These attempts never reach the model, so
+     * no tokens are charged, and a short wait (not a code fix) is the remedy.
+     */
+    static boolean isProviderUnavailable(String message) {
+        return message != null
+                && (message.contains("AI service temporarily unavailable")
+                    || message.contains("temporarily unavailable"));
+    }
+
+    /** Backoff before re-trying an AI-provider-outage failure (gives the
+     *  provider / circuit breaker time to recover instead of instantly
+     *  burning the auto-retry budget). */
+    private static final long PROVIDER_OUTAGE_BACKOFF_MS = 15_000L;
+
     private void retryBuild(UUID sessionId, String errorMessage, ImplementerAgent.RepairContext repair) {
         // User-facing note only — NEVER leak the raw compiler/runtime/bot output
         // into the chat. The technical detail is preserved in build_errors and
         // fed to the implementer via the repair context, not shown to the user.
-        chatMessageService.addMessage(sessionId, "system",
-                "⚙️ A build issue came up — automatically retrying with a fix…", null, 0);
+        boolean providerOutage = isProviderUnavailable(errorMessage);
+        if (providerOutage) {
+            chatMessageService.addMessage(sessionId, "system",
+                    "🌐 Our AI provider is momentarily unavailable — retrying in a few "
+                    + "seconds. This isn't a problem with your plugin, and you weren't "
+                    + "charged for this attempt.", null, 0);
+            // Give the provider / circuit breaker a moment before re-attempting,
+            // so a transient outage doesn't instantly exhaust the retry budget.
+            try {
+                Thread.sleep(PROVIDER_OUTAGE_BACKOFF_MS);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+        } else {
+            chatMessageService.addMessage(sessionId, "system",
+                    "⚙️ A build issue came up — automatically retrying with a fix…", null, 0);
+        }
 
         // Create a new iteration for the retry
         int iterationNumber = buildIterationRepository
