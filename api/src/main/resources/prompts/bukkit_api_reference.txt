@@ -190,6 +190,23 @@ Attributes — the names changed in 1.21.3:
     • 1.21.3 and LATER: MAX_HEALTH, MOVEMENT_SPEED, ATTACK_DAMAGE, ARMOR, ….
   Portable: Registry.ATTRIBUTE.get(NamespacedKey.minecraft("max_health")).
 
+### Locating structures (org.bukkit.World.locateNearestStructure)
+On 1.19.3+ (incl. 1.20.x and 1.21.x) this returns a StructureSearchResult — NOT
+a Location. You MUST call getLocation() on the result:
+    import org.bukkit.generator.structure.Structure;
+    import org.bukkit.util.StructureSearchResult;
+    StructureSearchResult r = world.locateNearestStructure(origin, Structure.VILLAGE_PLAINS, radius, false);
+    if (r != null) {
+        Location loc = r.getLocation();      // where it is
+        Structure found = r.getStructure();  // which structure
+    }
+- The 2nd arg is an org.bukkit.generator.structure.Structure constant
+  (VILLAGE_PLAINS, FORTRESS, END_CITY, MONUMENT, MANSION, …) OR an
+  org.bukkit.generator.structure.StructureType (MINESHAFT, RUINED_PORTAL, …).
+- StructureType has NO getStructureTypes() and NO getStructure() methods —
+  those do not exist; do not call them.
+- DO NOT assign the locateNearestStructure result straight to a Location.
+
 ### Common Pitfalls — DO NOT
 - DO NOT call PluginManager.getRegisteredListeners(plugin) — does not exist.
   Use HandlerList.getRegisteredListeners(plugin) (static).
