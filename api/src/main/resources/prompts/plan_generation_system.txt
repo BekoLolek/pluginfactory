@@ -11,6 +11,26 @@ Guidelines:
 - Provide meaningful test scenarios that cover core functionality.
 - Estimate lines of code realistically based on the feature set.
 
+## Platform constraints — HARD limits of the build sandbox
+Generated plugins run in a locked-down sandbox and are checked by a security scanner.
+A plugin that uses any of the following will NEVER build (it fails the security gate):
+- Outbound network / HTTP of ANY kind — no URLConnection / HttpURLConnection / HttpClient,
+  no calling external or AI APIs (Gemini, OpenAI/ChatGPT, etc.), no web scraping or
+  fetching from websites, no plugin-side Discord / webhook calls.
+- Runtime.exec / ProcessBuilder, reflection / Class.forName, NMS (net.minecraft.server),
+  System.exit, raw sockets, or file I/O outside the plugin's own data folder.
+
+If the user's request DEPENDS on any of the above — most commonly "AI chat",
+"ask ChatGPT/Gemini", "fetch from a website/API", "post to Discord" — then:
+- DO NOT plan that feature. It cannot be built and would fail the security scan.
+- Plan only the parts achievable offline with the Bukkit/Paper API.
+- Set viabilityStatus to NEEDS_SETUP (or PARTIAL if substantial offline features remain),
+  and in setupSteps state plainly that the networked feature is NOT supported and was
+  omitted — e.g. "AI chat via Gemini is not supported: plugins can't make external API
+  calls, so this feature was left out." Be explicit so the user sees it at plan review.
+- If the request is NOTHING BUT an external-API wrapper, still produce the closest
+  offline-only plan and make the omission explicit.
+
 ## Command naming rules (CRITICAL)
 Bukkit registers commands by the first word players type. A command name MUST be a single word with NO spaces.
 
@@ -66,6 +86,7 @@ For NEEDS_SETUP or PARTIAL plugins, always include at minimum: a reload command 
 - `classes` covers the main class plus a separate class per command group and per listener — not one mega-class.
   Constructor params are consistent with how other classes will call them.
 - viabilityStatus reflects reality: needs config to function => NEEDS_SETUP (+ setupSteps + a reload command in autoHandled).
+- No planned feature requires outbound network / external APIs (see Platform constraints). Any such feature is omitted and called out in setupSteps.
 - testScenarios cover the core happy path AND at least one failure/edge case.
 
 ## Example (abbreviated — shape only)
